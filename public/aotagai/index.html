@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>青田買いTOP100</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.0/angular.min.js" ></script>
+        <script src="//code.angularjs.org/1.2.0/angular-animate.min.js" ></script>
+        <script src="aotagai.js" ></script>
+
+    </head>
+    <body ng-app="myApp">
+        <div ng-controller="myController">
+            <div class="container">
+                <h2>青田買いTOP100</h2>
+                <p>Wikipediaに記事がある ＆ イベント出演予定がある<br />　＆ Wikipedia記事中の他の記事へのリンクが少ない女性声優TOP100</p>
+                <p><a href="http://www.koepota.jp/eventschedule/" target="_blank">こえぽたイベントスケジュール</a>に連動して午前2時頃自動更新　更新状況は<a href="../json_resource/" target="_blank">こちら</a>参照</p>
+                <a href="../">極北研TOP</a><br />
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>順位</th>
+                            <th>お名前</th>
+                            <th>リンク数1</th>
+                            <th>リンク数2</th>
+                            <th style="width:300px;">どんな人</th>
+                            <th>イベント予定数</th>
+                            <th>直近イベント日</th>
+                            <th style="width:200px;">直近イベント名</th>
+                            <th style="width:200px;">直近イベント出演者</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr ng-repeat="obj in aotagai">
+                            <td>{{obj.no}}</td>
+                            <td style="width:100px;"><a ng-href="http://ja.wikipedia.org/wiki/{{obj.name}}" target="_blank">{{obj.name}}</a><p style="margin-top: 3px;"><a ng-if="obj.seiyu_twitter" ng-href="{{obj.seiyu_twitter}}" target="_blank" style="text-decoration: none"><img src="icon_twitter.png" alt="twitterを開く" /> </a><a ng-if="obj.seiyu_ameblo" ng-href="{{obj.seiyu_ameblo}}" target="_blank"><img src="icon_ameblo.png" alt="amebloを開く" /></a></p></td>
+                            <td>{{obj.to_links_exists_count}}</td>
+                            <td>{{obj.to_links_count}}</td>
+                            <td>{{obj.exintro}}</td>
+                            <td>{{obj.event_count}}</td>
+                            <td>{{obj.event_day}}</td>
+                            <td><a ng-href="{{obj.event_link}}" target="_blank">{{obj.event_title}}</a></td>
+                            <td>{{obj.event_member}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+        <script>
+            angular.module("myApp", [])
+                    .controller("myController", function ($scope) {
+                        $scope.aotagai = aotagai;
+                    });
+        </script>
+    </body>
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>グッズ検索</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <link href="//cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/0.4.9/toaster.min.css" rel="stylesheet" />
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.0/angular.min.js" ></script>
+        <script src="//code.angularjs.org/1.2.0/angular-animate.min.js" ></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/0.4.9/toaster.min.js"></script>
+
+    </head>
+    <body ng-app="myApp">
+        <div ng-controller="myController">
+            <div class="container">
+                <h3>声優名でグッズ検索</h3>
+                <a href="../">極北研TOP</a><br />
+                <input type="text" ng-model="page" />
+                <input type="button" ng-click="search()" value="検索"/>
+                <table class="table">
+                    <thead>
+                        <tr><th>画像</th><th>商品名</th><th>発売時期</th><th>価格</th><th>原作名</th><th>キャラクター名</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr ng-repeat="obj in result|orderBy:['character', 'orig']">
+                            <th><a href="{{obj.link}}" target='_blank'><img ng-src="{{obj.img}}" /></a></th><th>{{obj.name}}</th><th>{{obj.release}}</th><th>{{obj.price}}</th><th>{{obj.orig}}</th><th>{{obj.character}}</th>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    <toaster-container toaster-options="{'position-class': 'toast-top-right','fade-in':100,'fade-out':100,'close-button': false}"></toaster-container>
+    <script>
+        angular.module("myApp", ["toaster"])
+                .controller("myController", function($rootScope, $scope, toaster) {
+                    console.log("ws://" + window.location.host + window.location.pathname + "ws/");
+                    $scope.ws = new WebSocket("ws://" + window.location.host + window.location.pathname + "ws/");
+                    if (document.location.hash) {
+                        var re = new RegExp("^(#?/?)");
+                        $scope.page = decodeURI(document.location.hash.replace(re, ""));
+                    }
+                    $scope.result = [];
+                    $scope.col = [];
+                    $scope.search = function() {
+                        toaster.pop("info", "メッセージ", "検索を開始しました");
+                        var arr = [];
+                        arr.push("search");
+                        arr.push({"page": $scope.page});
+                        $scope.ws.send(JSON.stringify(arr));
+                        document.location.hash = "#/" + encodeURI($scope.page);
+                    };
+                    $scope.ws.onopen = function() {
+                        console.log("foo");
+                        toaster.pop("info", "接続しました", "検索できます");
+                        if($scope.page){
+                            $scope.search();
+                        }
+                        $scope.keep = setInterval(function() {
+                            $scope.ws.send("foo");
+                        }, 50000);
+                    };
+                    $scope.ws.onmessage = function(message) {
+                        toaster.pop("info", "検索完了", "結果を表示します");
+                        $scope.col = [];
+                        var result = JSON.parse(message.data);
+                        $scope.result = result;
+                        var obj = {};
+                        for (var i = 0; i < result.length; i++) {
+                            for (var key in result[i]) {
+                                obj[key] = true;
+                            }
+                        }
+                        for (var key in obj) {
+                            $scope.col.push(key);
+                        }
+                        $rootScope.$apply();
+                    };
+                });
+    </script>
+</body>
+</html>

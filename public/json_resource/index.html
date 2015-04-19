@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>リソースの更新状況を確認</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <link href="//cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/0.4.9/toaster.min.css" rel="stylesheet" />
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.0/angular.min.js" ></script>
+        <script src="//code.angularjs.org/1.2.0/angular-animate.min.js" ></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/0.4.9/toaster.min.js"></script>
+
+    </head>
+    <body ng-app="myApp">
+        <div ng-controller="myController">
+            <div class="container">
+                <h2>リソースの更新状況を確認</h2>
+                <a href="../">極北研TOP</a><br />
+                <table class="table">
+                    <thead><tr><th>リソース名</th><th>最終更新日時</th></tr></thead>
+                    <tbody><tr ng-repeat="obj in stats|orderBy:'-time'"><td><a ng-click="search(obj.name);">{{obj.name}}</a></td><td>{{obj.time|date:"MM/dd HH:mm:ss"}}</td></tr></tbody>
+                </table>
+                <table class="table">
+                    <thead>
+                        <tr><th>日付</th><th>操作</th><th>パス</th><th>値</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr ng-repeat="obj in rebuildResult|orderBy:'-time'">
+                            <td>{{obj.time|date:"MM/dd HH:mm:ss"}}</td>
+                            <td>{{obj.op}}</td>
+                            <td>{{obj.path}}</td>
+                            <td>{{obj.value|json}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    <toaster-container toaster-options="{'position-class': 'toast-top-right','fade-in':100,'fade-out':100,'close-button': false}"></toaster-container>
+    <script>
+        angular.module("myApp", ["toaster"])
+                .controller("myController", function ($rootScope, $scope, toaster) {
+                    console.log("ws://" + window.location.host + window.location.pathname + "ws/");
+                    $scope.ws = new WebSocket("ws://" + window.location.host + window.location.pathname + "ws/");
+
+                    $scope.result = [];
+                    $scope.col = [];
+                    $scope.ws.onopen = function () {
+                        console.log("foo");
+                        $scope.ws.send(JSON.stringify(["init", {}]));
+                        $scope.keep = setInterval(function () {
+                            $scope.ws.send("foo");
+                        }, 50000);
+                    };
+                    $scope.ws.onmessage = function (message) {
+                        var result = JSON.parse(message.data);
+                        if (result[0].diff === undefined) {
+                            toaster.pop("info", "接続しました", "検索できます");
+                            $scope.stats = result;
+                        } else {
+                            toaster.pop("info", "検索完了", "結果を表示します");
+                            $scope.rebuildResult = [];
+                            for (var i = 0; i < result.length; i++) {
+                                var res = result[i];
+                                for (var j = 0; j < res.diff.length; j++) {
+                                    var r = res.diff[j];
+                                    if (r.op !== "move") {
+                                        if (r.value === undefined && r.from !== undefined) {
+                                            r.value = r.from;
+                                        }
+                                        if (r.path) {
+                                            r.path = r.path.replace(/~1/g, "/");
+                                        }
+                                        r.time = result[i].time;
+                                        $scope.rebuildResult.push(r);
+                                    }
+                                }
+                            }
+                        }
+
+                        $rootScope.$apply();
+                    };
+                    $scope.search = function (name) {
+                        toaster.pop("info", "メッセージ", "検索を開始しました");
+                        var arr = [];
+                        arr.push("search");
+                        arr.push({"name": name});
+                        $scope.ws.send(JSON.stringify(arr));
+                    };
+                });
+    </script>
+</body>
+</html>

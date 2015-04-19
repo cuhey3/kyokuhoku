@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html ng-app="myapp" ng-controller="myctrl">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title>{{title()}}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <style>
+            div{
+                margin-left:5px;
+                vertical-align: top;
+                display: inline-block;
+            }
+        </style>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/angular.js/1.2.0/angular.min.js"></script>
+        <script>
+            angular.module("myapp", []).controller("myctrl", function($scope, $window) {
+                $scope.images = [];
+                $scope.count = 0;
+                $scope.isFocus = true;
+                $scope.title = function() {
+                    if ($scope.isFocus || $scope.count === 0) {
+                        return "ameblo画像アンテナ";
+
+                    } else {
+                        return "(" + $scope.count + ") ameblo画像アンテナ";
+                    }
+
+                };
+                var onFocus = function() {
+                    $scope.isFocus = true;
+                    $scope.count = 0;
+                    $scope.$apply();
+                };
+                var onBlur = function() {
+                    $scope.isFocus = false;
+                    $scope.$apply();
+                };
+                $window.onfocus = onFocus;
+                $window.onblur = onBlur;
+                wsinit($scope);
+            });
+
+            function wsinit(scope) {
+                scope.ws = new WebSocket("ws://" + window.location.host + "/ameblo_antenna/ws/");
+                scope.ws.onopen = function() {
+                    var req = [];
+                    req.push("init");
+                    scope.ws.send(JSON.stringify(req));
+                };
+                scope.ws.onmessage = function(message) {
+                    var obj = JSON.parse(message.data);
+                    if (obj.name) {
+                        scope.images.unshift(obj);
+                        scope.count++;
+                    } else {
+                        scope.images = obj;
+                    }
+                    scope.$apply();
+                };
+                scope.ws.onclose = function() {
+                    wsinit(scope);
+                };
+            };
+        </script>
+        <style>
+        </style>
+    </head>
+    <body class="container">
+        <h2>ameblo画像アンテナ</h2>
+        <a href="../">極北研TOP</a><br />
+        <div ng-repeat="image in images"><a ng-href="{{image.ameblo_url}}" target="_blank"><img ng-src="{{image.ameblo_last_img}}" alt="{{image.ameblo_title}}" /></a><br /><a ng-href="{{image.ameblo_url}}" style="color:black;" target="_blank">{{image.name}}</a>　{{image.ameblo_title}}</div>
+    </body>
+</html>

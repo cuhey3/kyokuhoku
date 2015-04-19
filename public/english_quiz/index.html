@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>英単語1500と対戦</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <link href="//cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/0.4.9/toaster.min.css" rel="stylesheet" />
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.0/angular.min.js" ></script>
+        <script src="//code.angularjs.org/1.2.0/angular-animate.min.js" ></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/0.4.9/toaster.min.js"></script>
+
+    </head>
+    <body ng-app="myApp">
+        <div ng-controller="myController">
+            <div class="container">
+                <h2>英単語1500と対戦</h2>
+                <div ng-show="!loggedin">
+                    <div>username: <input type="text" ng-model="username" /></div>
+                    <div>password: <input type="text" ng-model="password" /></div>
+                    <div><input type="button" value="ログイン" ng-click="login()"/></div>
+                </div>
+                <div ng-show="loggedin">
+                    <div>{{username}}さんのレーティング: {{userRating}}</div>
+                    <div>単語のレーティング: {{wordRating}}</div>
+                    <div style="margin-bottom:20px;min-height:3em;">単語の説明:<br /><span style="color:brown;">{{category}} {{question}}</span></div>
+                    あなたの答え:<div style="margin-bottom:5px;"><input type="text" ng-model="answer" /></div>
+                    <div>
+                        <input type="button" value="出題！" ng-click="getQuestion()" ng-disabled="questionNow" /> 
+                        <input type="button" value="回答！" ng-click="sendAnswer()" ng-disabled="!answer || !questionNow" /> 
+                        <input type="button" value="ギブアップ！" ng-click="giveUp()" ng-disabled="!questionNow" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    <toaster-container toaster-options="{'position-class': 'toast-top-right','fade-in':100,'fade-out':100,'close-button': false}"></toaster-container>
+    <script>
+        angular.module("myApp", ["toaster"])
+                .controller("myController", function ($rootScope, $scope, toaster) {
+                    $scope.username = "nanashi";
+                    $scope.password = "nanashi";
+                    $scope.loggedin = false;
+                    $scope.questionNow = false;
+                    $scope.wordRating = 0;
+                    $scope.ws = new WebSocket("ws://" + window.location.host + window.location.pathname + "ws/");
+                    $scope.ws.onopen = function () {
+                        toaster.pop("info", "接続しました", "ログインしてください");
+                        $scope.keep = setInterval(function () {
+                            $scope.ws.send("foo");
+                        }, 50000);
+                    };
+                    $scope.ws.onmessage = function (message) {
+                        var mes = JSON.parse(message.data);
+                        if (mes.message && mes.message === "ログインに成功しました。") {
+                            $scope.loggedin = true;
+                            toaster.pop("info", "メッセージ", mes.message);
+                            console.log(mes.message);
+                        } else if (mes.message) {
+                            toaster.pop("info", "メッセージ", mes.message);
+                            console.log(mes.message);
+                        } else if (mes.mean) {
+                            $scope.category = mes.category;
+                            $scope.question = mes.mean;
+                            $scope.wordRating = mes.elo;
+                            $scope.questionNow = true;
+                        } else if (mes.elo) {
+                            $scope.userRating = mes.elo;
+                        }
+                        $rootScope.$apply();
+                    };
+                    $scope.sendAnswer = function () {
+                        var arr = [];
+                        arr.push("answer");
+                        arr.push({});
+                        arr[1]["answer"] = $scope.answer;
+                        $scope.ws.send(JSON.stringify(arr));
+                        $scope.questionNow = false;
+                    };
+                    $scope.giveUp = function () {
+                        var arr = [];
+                        arr.push("answer");
+                        arr.push({});
+                        arr[1]["answer"] = "giveup";
+                        $scope.ws.send(JSON.stringify(arr));
+                        $scope.questionNow = false;
+                    };
+                    $scope.getQuestion = function () {
+                        $scope.answer = "";
+                        var arr = [];
+                        arr.push("question");
+                        arr.push({});
+                        $scope.ws.send(JSON.stringify(arr));
+                    };
+                    $scope.login = function () {
+                        toaster.pop("info", "メッセージ", "ログイン中…");
+                        var arr = [];
+                        arr.push("login");
+                        arr.push({"username": $scope.username, "password": $scope.password});
+                        $scope.ws.send(JSON.stringify(arr));
+                    };
+                });
+    </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html ng-app="myapp">
+    <head>
+        <title>herokuチャット</title>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <style>
+            .hidden{
+                display:none;
+            }
+        </style>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/angular.js/1.2.0/angular.min.js"></script>
+        <script>
+            angular.module("myapp", []).controller("myctrl", function ($scope) {
+                $scope.user = prompt("ユーザー名を入力してください", "");
+                $scope.keys = Object.keys;
+                $scope.messagesObj = {};
+                $scope.id = new Date().getTime();
+                wsinit($scope);
+                $scope.createId = function () {
+                    $scope.completed = true;
+                    $scope.sendAction();
+                    if ($scope.message) {
+                        $scope.id = new Date().getTime();
+                        $scope.message = "";
+                    }
+                };
+                $scope.sortFunc = function (key) {
+                    var obj = $scope.messagesObj[key];
+                    if (obj.completed) {
+                        return -obj.date;
+                    } else {
+                        var date = "9" + obj.id;
+
+                        date = new Number(date);
+                        return -date;
+                    }
+                };
+
+                $scope.sendAction = function () {
+                    var obj = {
+                        id: $scope.id,
+                        date: new Date().getTime(),
+                        message: $scope.message,
+                        user: $scope.user,
+                        completed: $scope.completed
+                    };
+                    var post = [];
+                    post.push("post");
+                    post.push(obj);
+                    $scope.ws.send(JSON.stringify(post));
+                };
+
+                $scope.isBlank = function (key) {
+                    if (key && $scope.messagesObj[key] && $scope.messagesObj[key].message && $scope.messagesObj[key].message.length !== 0) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                    return $scope.messagesObj[key].message.length === 0;
+                };
+            });
+
+            function wsinit(scope) {
+                scope.ws = new WebSocket("ws://" + window.location.host + "/chat/ws/");
+                scope.ws.onopen = function () {
+                    var req = [];
+                    req.push("init");
+                    scope.ws.send(JSON.stringify(req));
+                    scope.$watch("message", function () {
+                        scope.completed = false;
+                        scope.sendAction();
+                    });
+                };
+                scope.ws.onmessage = function (message) {
+                    var obj = JSON.parse(message.data);
+                    if (obj.id) {
+                        var key = obj.id;
+                        scope.messagesObj[key] = obj;
+                    } else {
+                        scope.messagesObj = obj;
+                    }
+                    scope.$apply();
+                };
+                scope.ws.onclose = function () {
+                    wsinit(scope);
+                };
+            }
+        </script>
+        <style>
+        </style>
+    </head>
+    <body ng-controller="myctrl" class="container">
+        <h2>herokuチャット</h2>
+        <h3>{{user}}</h3>
+        <textarea ng-model="message" class="form-control" placeholder="メッセージをどうぞ..."></textarea>
+        <input type="button" ng-click="createId()" value="新しく書く" class="btn btn-primary"/>
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th style="width:15%;">時間</th>
+                    <th style="width:25%;">ユーザー</th>
+                    <th style="width:60%;">発言</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr ng-repeat="key in keys(messagesObj)|orderBy:sortFunc:key" ng-class="{hidden:isBlank(key)}">
+                    <td>{{messagesObj[key].date|date:"MM/dd HH:mm:ss"}}</td>
+                    <td>{{messagesObj[key].user}}</td>
+                    <td>{{messagesObj[key].message}}</td>
+                </tr>
+            </tbody>
+        </table>
+    </body>
+</html>

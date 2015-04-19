@@ -1,0 +1,10 @@
+{
+    "attributes": {},
+    "elements": {
+        "toaster-container": {
+            "attributes": {
+                "toaster-options": {}
+            }
+        }
+    }
+}
