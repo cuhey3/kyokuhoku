@@ -43,7 +43,8 @@ public class AmebloRoute extends RouteBuilder {
                 .process(new AmebloGetLatestImageInfoProcessor())
                 .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert)
                 .filter(simple("${body[img_update]}"))
-                .to("direct:ameblo_antenna.newImage");
+                .to("direct:ameblo_antenna.newImage")
+                .to("direct:ameblo_antenna.memory");
 
         if (!Settings.isLocal) {
             from("timer:ameblo_antenna.fillExistImages?repeatCount=1").routeId("ameblo_antenna.fillExistImages")
