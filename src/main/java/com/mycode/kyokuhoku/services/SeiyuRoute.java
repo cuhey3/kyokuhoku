@@ -3,17 +3,12 @@ package com.mycode.kyokuhoku.services;
 import com.mycode.kyokuhoku.JsonResource;
 import com.mycode.kyokuhoku.Utility;
 import java.io.IOException;
-import java.net.URLEncoder;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Predicate;
@@ -22,13 +17,6 @@ import org.apache.camel.builder.RouteBuilder;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import twitter4j.PagableResponseList;
-import twitter4j.ResponseList;
-import twitter4j.Twitter;
-import twitter4j.TwitterFactory;
-import twitter4j.User;
-import twitter4j.UserList;
-import twitter4j.conf.ConfigurationBuilder;
 
 public class SeiyuRoute extends RouteBuilder {
 
@@ -59,7 +47,7 @@ public class SeiyuRoute extends RouteBuilder {
                 .filter(header("seiyuNameUpdate"))
                 .to("direct:seiyu.new")
                 .to("direct:koepota.existUpdateSeiyu"); // external:koepota
-        from("seda:seiyu.twitter")
+/*        from("seda:seiyu.twitter")
                 .to("sql:select * from twitter_oauth?dataSource=ds")
                 .setBody(simple("${body[0]}")).to("direct:utility.mapToHeader")
                 .to("sql:select twitter_url from seiyu where twitter_url is not null and seiyu_ignore is null and koepota_exist_now?dataSource=ds")
@@ -107,7 +95,7 @@ public class SeiyuRoute extends RouteBuilder {
                         }
                         System.out.println(users.size() + " updated.");
                     }
-                });
+                });*/
     }
 }
 

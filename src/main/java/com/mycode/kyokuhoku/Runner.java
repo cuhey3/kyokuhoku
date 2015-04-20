@@ -14,7 +14,6 @@ import com.mycode.kyokuhoku.services.KoepotaRoute;
 import com.mycode.kyokuhoku.services.SeiyuGoodsRoute;
 import com.mycode.kyokuhoku.services.SeiyuRoute;
 import com.mycode.kyokuhoku.services.SeiyuWikiParseRoute;
-import java.util.Properties;
 import org.apache.camel.main.Main;
 
 public class Runner {
@@ -39,11 +38,11 @@ public class Runner {
         main.addRouteBuilder(new SeiyuWikiParseRoute());
         main.start();
         if (Settings.isLocal) {
-            startHawtio();
+            //startHawtio();
         }
     }
 
-    public static void startHawtio() throws Exception {
+/*    public static void startHawtio() throws Exception {
         Properties props = System.getProperties();
         props.setProperty("hawtio.authenticationEnabled", "false");
         props.setProperty("hawtio.offline", "false");
@@ -53,5 +52,5 @@ public class Runner {
         main.setWarLocation(String.valueOf(hawtioWar));
         main.setPort(9090);
         main.run();
-    }
+    }*/
 }
