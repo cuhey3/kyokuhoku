@@ -73,8 +73,8 @@ public class Utility {
 
             @Override
             public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody(Utility.getBytes(urlExp.evaluate(exchange, String.class)));
                 exchange.getIn().setHeader(Exchange.FILE_NAME, fileNameExp.evaluate(exchange, String.class));
+                exchange.getIn().setBody(Utility.getBytes(urlExp.evaluate(exchange, String.class)));
             }
         };
     }
