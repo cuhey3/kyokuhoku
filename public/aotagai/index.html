@@ -51,7 +51,11 @@
         <script>
             angular.module("myApp", [])
                     .controller("myController", function ($scope) {
-                        $scope.aotagai = aotagai;
+                        var array = [];
+                        for (var key in aotagai) {
+                            array.push(aotagai[key]);
+                        }
+                        $scope.aotagai = array;
                     });
         </script>
     </body>

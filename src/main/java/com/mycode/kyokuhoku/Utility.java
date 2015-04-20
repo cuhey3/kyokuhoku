@@ -1,5 +1,7 @@
 package com.mycode.kyokuhoku;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import org.apache.camel.Exchange;
@@ -95,6 +97,22 @@ public class Utility {
             @Override
             public void process(Exchange exchange) throws Exception {
                 exchange.getIn().setHeader(header, fromExp.evaluate(exchange, Object.class));
+            }
+        };
+    }
+
+    public static Processor listToMapByUniqueKey(final String key) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) throws Exception {
+                List<Map<String, Object>> list = exchange.getIn().getBody(List.class);
+                Map<String, Map> result = new LinkedHashMap<>();
+                for (Map<String, Object> map : list) {
+                    String k = (String) map.get(key);
+                    result.put(k, map);
+                }
+                exchange.getIn().setBody(result);
             }
         };
     }
