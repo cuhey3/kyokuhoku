@@ -5,6 +5,8 @@ import com.mycode.kyokuhoku.Utility;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,6 +22,13 @@ import org.apache.camel.builder.RouteBuilder;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import twitter4j.PagableResponseList;
+import twitter4j.ResponseList;
+import twitter4j.Twitter;
+import twitter4j.TwitterFactory;
+import twitter4j.User;
+import twitter4j.UserList;
+import twitter4j.conf.ConfigurationBuilder;
 
 public class SeiyuRoute extends RouteBuilder {
 
@@ -50,6 +59,55 @@ public class SeiyuRoute extends RouteBuilder {
                 .filter(header("seiyuNameUpdate"))
                 .to("direct:seiyu.new")
                 .to("direct:koepota.existUpdateSeiyu"); // external:koepota
+        from("seda:seiyu.twitter")
+                .to("sql:select * from twitter_oauth?dataSource=ds")
+                .setBody(simple("${body[0]}")).to("direct:utility.mapToHeader")
+                .to("sql:select twitter_url from seiyu where twitter_url is not null and seiyu_ignore is null and koepota_exist_now?dataSource=ds")
+                .process(new Processor() {
+
+                    @Override
+                    public void process(Exchange exchange) throws Exception {
+                        Map<String, Object> headers = exchange.getIn().getHeaders();
+                        ConfigurationBuilder cb = new ConfigurationBuilder();
+                        cb.setDebugEnabled(true)
+                        .setOAuthConsumerKey((String) headers.get("consumer_key"))
+                        .setOAuthConsumerSecret((String) headers.get("consumer_secret"))
+                        .setOAuthAccessToken((String) headers.get("access_token"))
+                        .setOAuthAccessTokenSecret((String) headers.get("access_token_secret"));
+                        TwitterFactory tf = new TwitterFactory(cb.build());
+                        Twitter twitter = tf.getInstance();
+                        UserList userList = twitter.getUserLists("Cu_hey").get(0);
+                        long listId = userList.getId();
+                        List<Map<String, String>> body = exchange.getIn().getBody(List.class);
+                        ArrayList<String> users = new ArrayList<>();
+                        for (Map<String, String> map : body) {
+                            users.add(map.get("twitter_url").replaceFirst("(https?://)?twitter.com/", "").replaceFirst("/$", ""));
+                        }
+                        PagableResponseList<User> userListMembers = twitter.getUserListMembers(listId, -1L);
+                        Iterator<User> iterator = userListMembers.iterator();
+                        while (iterator.hasNext()) {
+                            User user = iterator.next();
+                            String screenName = user.getScreenName();
+                            if (users.contains(screenName)) {
+                                users.remove(screenName);
+                            } else {
+                                twitter.destroyUserListMember(listId, screenName);
+                            }
+                        }
+                        ArrayList<String> sub = new ArrayList<>();
+                        for (int i = 0; i < users.size(); i++) {
+                            sub.add(users.get(i));
+                            if (sub.size() == 50) {
+                                twitter.createUserListMembers(listId, sub.toArray(new String[50]));
+                                sub = new ArrayList<>();
+                            }
+                        }
+                        if (!sub.isEmpty()) {
+                            twitter.createUserListMembers(listId, sub.toArray(new String[sub.size()]));
+                        }
+                        System.out.println(users.size() + " updated.");
+                    }
+                });
     }
 }
 

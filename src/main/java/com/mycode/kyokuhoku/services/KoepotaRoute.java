@@ -25,7 +25,8 @@ public class KoepotaRoute extends RouteBuilder {
 
         from("direct:koepota.existUpdateSeiyu")
                 .process(new KoepotaExistUpdateSeiyuProcessor()).to("jdbc:ds")
-                .to("seda:aotagai.update");
+                .to("seda:aotagai.update")
+                .to("seda:seiyu.twitter");
 
         from("direct:koepota.upsertEvents")
                 .filter(header("koepotaEventsUpdate"))
