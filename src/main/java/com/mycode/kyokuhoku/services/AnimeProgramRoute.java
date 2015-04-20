@@ -2,8 +2,6 @@ package com.mycode.kyokuhoku.services;
 
 import com.mycode.kyokuhoku.JsonResource;
 import com.mycode.kyokuhoku.Utility;
-import java.io.IOException;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -28,52 +26,54 @@ public class AnimeProgramRoute extends RouteBuilder {
 
     @Override
     public void configure() throws Exception {
-        from("quartz2://foo?cron=0+5+4,12,21+*+*+?&trigger.timeZone=Asia/Tokyo").autoStartup(false)
+        from("direct:anime_program.page")
+                .setHeader("program_id", simple("${body}"))
+                .process(Utility.GetDocumentProcessor(simple("http://tv.yahoo.co.jp${body}")))
+                .process(new AnimeProgramParsePageProcessor());
+
+        from("seda:anime_program.insert").toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert);
+        from("seda:anime_program.insert2").toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update2, insert2);
+
+        from("quartz2://foo?cron=0+5+4,12,21+*+*+?&trigger.timeZone=Asia/Tokyo").autoStartup(false).routeId("anime_program.tokyoList")
                 .process(new AnimeProgramTokyoListProcessor())
                 .split(body(LinkedHashSet.class))
                 .to("direct:anime_program.page")
                 .filter(header("notIgnore"))
-                .to("direct:anime_program.insert");
-        from("timer:program_series.watch?period=10m").autoStartup(false)
-                .to("sql:select series_id, series_title from program_series where ignore_series?dataSource=ds")
-                .process(new AnimeProgramIgnoreSeriesProcessor())
-                .filter(header("ignoreSeriesUpdate"))
-                .process(new AnimeProgramDeleteIgnoreSeriesProgramProcessor())
-                .to("jdbc:ds");
-        from("timer:foo?period=3m").autoStartup(false)
+                .to("seda:anime_program.insert");
+
+        from("timer:anime_program.onair?period=3m").autoStartup(false).routeId("anime_program.onair")
+                .process(Utility.GetDocumentProcessor(simple("http://tv.yahoo.co.jp/search/?g=07")))
                 .process(new AnimeProgramTokyoOnairProcessor())
                 .split(body(LinkedHashSet.class))
                 .setHeader("onair_flag").constant(true)
                 .to("direct:anime_program.page")
                 .filter(header("notIgnore"))
-                .to("direct:anime_program.insert2");
-        from("direct:anime_program.page").process(new AnimeProgramPageProcessor());
-        from("direct:anime_program.insert").toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert);
-        from("direct:anime_program.insert2").toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update2, insert2);
+                .to("seda:anime_program.insert2");
+
+        from("timer:program_series.watch?period=1h").autoStartup(false).routeId("anime_program.ignoreSeries")
+                .to("sql:select series_id, series_title from program_series where ignore_series?dataSource=ds")
+                .process(new AnimeProgramIgnoreSeriesProcessor())
+                .filter(header("ignoreSeriesUpdate"))
+                .process(new AnimeProgramDeleteIgnoreSeriesProgramProcessor())
+                .to("jdbc:ds");
     }
 
 }
 
-class AnimeProgramPageProcessor implements Processor {
+class AnimeProgramParsePageProcessor implements Processor {
 
-    final SimpleDateFormat mysdf = new SimpleDateFormat("yyyy年M月d日H時mm分");
-    final Pattern dayofweekPattern = Pattern.compile("^.*（([日月火水木金土])）.*$");
-    final Pattern startTimePattern = Pattern.compile("^(.*?)（[日月火水木金土]）(.*?)～.*$");
-    final Pattern endTimePattern = Pattern.compile("^(.*?)（[日月火水木金土]）.*?～(.*)$");
+    private static final SimpleDateFormat mysdf = new SimpleDateFormat("yyyy年M月d日H時mm分");
+    private static final Pattern dayofweekPattern = Pattern.compile("^.*（([日月火水木金土])）.*$");
+    private static final Pattern startTimePattern = Pattern.compile("^(.*?)（[日月火水木金土]）(.*?)～.*$");
+    private static final Pattern endTimePattern = Pattern.compile("^(.*?)（[日月火水木金土]）.*?～(.*)$");
 
-    AnimeProgramPageProcessor() {
+    static {
         mysdf.setTimeZone(TimeZone.getTimeZone("Asia/Tokyo"));
     }
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        String page = exchange.getIn().getBody(String.class);
-        Document document = Utility.getDocument("http://tv.yahoo.co.jp" + page);
-        documentToHeader(exchange, document);
-        exchange.getIn().setHeader("program_id", page);
-    }
-
-    public void documentToHeader(Exchange exchange, Document document) throws ParseException, IOException {
+        Document document = exchange.getIn().getBody(Document.class);
         Message in = exchange.getIn();
         in.setHeader("new_flag", !document.select(".new").isEmpty());
         in.setHeader("repeat_flag", !document.select(".repeat").isEmpty());
@@ -110,14 +110,12 @@ class AnimeProgramPageProcessor implements Processor {
 
 class AnimeProgramTokyoListProcessor implements Processor {
 
-    final String domain = "http://tv.yahoo.co.jp";
-
     @Override
     public void process(Exchange exchange) throws Exception {
         String path = "/search/?q=&t=3&a=23&g=07&oa=1&s=1";
         LinkedHashSet<String> links = new LinkedHashSet<>();
         while (true) {
-            Document document = Utility.getDocument(domain + path);
+            Document document = Utility.getDocument("http://tv.yahoo.co.jp" + path);
             Elements program_link_els = document.select(".programlist li a[href~=/program/\\d{6,}/]");
             for (Element e : program_link_els) {
                 links.add(e.attr("href"));
@@ -137,7 +135,7 @@ class AnimeProgramTokyoOnairProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        Document document = Utility.getDocument("http://tv.yahoo.co.jp/search/?g=07");
+        Document document = exchange.getIn().getBody(Document.class);
         Elements select = document.select(".programlist li:has(.onAir) a[href~=/program/\\d{6,}/]");
         LinkedHashSet<String> links = new LinkedHashSet<>();
         for (Element e : select) {

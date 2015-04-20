@@ -2,6 +2,7 @@ package com.mycode.kyokuhoku.services;
 
 import com.mycode.kyokuhoku.JsonColumnUtil;
 import com.mycode.kyokuhoku.JsonResource;
+import com.mycode.kyokuhoku.MyJsonUtil;
 import com.mycode.kyokuhoku.Utility;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -253,9 +254,9 @@ class SeiyuToLinksProcessor implements Processor {
         List list = exchange.getIn().getBody(List.class);
         Map<String, Object> body = (Map) list.get(0);
         String name = (String) body.get("name");
-        JsonResource instance = JsonResource.getInstance();
         String jsonString = Utility.getJson("http://ja.wikipedia.org/w/api.php?action=parse&page=" + URLEncoder.encode(name, "UTF-8") + "&prop=wikitext|links&format=json&redirects");
-        Map<String, Map> json = instance.unmarshal(jsonString, Map.class);
+
+        Map<String, Map> json = MyJsonUtil.unmarshal(jsonString, Map.class);
         Map jsonCursor = json.get("parse");
         jsonCursor = (Map) jsonCursor.get("wikitext");
         String wikitext = (String) jsonCursor.get("*");

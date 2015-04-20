@@ -2,6 +2,7 @@ package com.mycode.kyokuhoku.services;
 
 import com.mycode.kyokuhoku.JsonResource;
 import com.mycode.kyokuhoku.Utility;
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -9,7 +10,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.apache.camel.Exchange;
+import org.apache.camel.Message;
+import org.apache.camel.Predicate;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.jsoup.nodes.Document;
@@ -22,25 +27,29 @@ public class SeiyuRoute extends RouteBuilder {
     public void configure() throws Exception {
         String insert = "INSERT INTO seiyu (name, ameblo_url, twitter_url) SELECT :#${header.name}, :#${header.ameblo_url}, :#${header.twitter_url}";
         String upsert = "UPDATE seiyu SET ameblo_url=case when ameblo_url is null then :#${header.ameblo_url} else ameblo_url end, twitter_url=case when twitter_url is null then :#${header.twitter_url} else twitter_url end WHERE name=:#${header.name}";
-        from("timer:seiyu.info.crawl?period=24h").autoStartup(false)
+
+        from("direct:seiyu.getInfo")
+                .process(Utility.urlEncode(body(), "encodedName"))
+                .process(Utility.GetDocumentProcessor(simple("http://ja.wikipedia.org/w/api.php?action=parse&prop=externallinks&page=${header.encodedName}&format=xml&redirects")))
+                .filter(new SeiyuGetInfoPredicate())
+                .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", upsert, insert);
+
+        from("timer:seiyu.crawl?period=24h").autoStartup(false).routeId("seiyu.crawl")
                 .to("sql:select name from seiyu where seiyu_ignore is null?dataSource=ds")
-                .split(body(List.class)).throttle(1).timePeriodMillis(15000)
+                .split(body(List.class)).throttle(1).timePeriodMillis(30000)
                 .setBody(simple("${body[name]}"))
-                .to("direct:seiyu.info.get");
-        from("timer:seiyu.categorymembers?period=1h").autoStartup(false)
+                .to("direct:seiyu.getInfo");
+
+        from("direct:seiyu.new")
+                .process(new SeiyuNewProcessor())
+                .split(body(List.class))
+                .to("direct:seiyu.getInfo");
+
+        from("timer:seiyu.categorymembers?period=1h").autoStartup(false).routeId("seiyu.categorymembers")
                 .process(new SeiyuCategoryMembersProcessor())
                 .filter(header("seiyuNameUpdate"))
                 .to("direct:seiyu.new")
-                .to("seda:koepota.exist");
-        from("direct:seiyu.new")
-                .process(new SeiyuNewProcessor())
-                .to("direct:seiyu.info.get");
-        from("direct:seiyu.info.get")
-                .process(new SeiyuGetInfoProcessor())
-                .to("direct:seiyu.insert");
-        from("direct:seiyu.insert")
-                .filter(header("insert"))
-                .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", upsert, insert);
+                .to("direct:koepota.existUpdateSeiyu"); // external:koepota
     }
 }
 
@@ -66,30 +75,40 @@ class SeiyuCategoryMembersProcessor implements Processor {
     }
 }
 
-class SeiyuGetInfoProcessor implements Processor {
+class SeiyuGetInfoPredicate implements Predicate {
 
     @Override
-    public void process(Exchange exchange) throws Exception {
-        String name = exchange.getIn().getBody(String.class);
-        String url = "http://ja.wikipedia.org/w/api.php?action=parse&prop=externallinks&page=" + URLEncoder.encode(name, "UTF-8") + "&format=xml";
-        Document doc = Utility.getDocument(url);
-        String ameblo_url = null, twitter_url = null;
-        if (doc != null) {
-            Elements el = doc.select("externallinks el:matches(^https?://ameblo.jp/[^/]+/?$)");
-            if (!el.isEmpty() && !el.text().contains("wakeupgirls")) {
-                ameblo_url = getSpecificLink(el, doc);
-            }
-            el = doc.select("externallinks el:matches(^https?://twitter.com/[^/%@ ]+/?$)");
-            twitter_url = getSpecificLink(el, doc);
+    public boolean matches(Exchange exchange) {
+        Message in = exchange.getIn();
+        Document doc = in.getBody(Document.class);
+        if (doc == null || !doc.select("error[code=missingtitle]").isEmpty()) {
+            return false;
         }
-        JsonResource instance = JsonResource.getInstance();
-        Map<String, String> koepotaMembers = instance.get("koepotaMembers", Map.class);
-        boolean koepota_exist = koepotaMembers.containsKey(name.replaceFirst(" \\(.+\\)$", ""));
-        if (ameblo_url != null || twitter_url != null || koepota_exist) {
-            exchange.getIn().setHeader("insert", true);
-            exchange.getIn().setHeader("ameblo_url", ameblo_url);
-            exchange.getIn().setHeader("twitter_url", twitter_url);
-            exchange.getIn().setHeader("name", name);
+        String ameblo_url = null, twitter_url, name;
+        if (doc.select("redirects r").isEmpty()) {
+            name = doc.select("parse[title]").first().attr("title");
+        } else {
+            name = doc.select("redirects r").first().attr("from");
+        }
+        Elements el = doc.select("externallinks el:matches(^https?://ameblo.jp/[^/]+/?$)");
+        if (!el.isEmpty() && !el.text().contains("wakeupgirls")) {
+            ameblo_url = getSpecificLink(el, doc);
+        }
+        el = doc.select("externallinks el:matches(^https?://twitter.com/[^/%@ ]+/?$)");
+        twitter_url = getSpecificLink(el, doc);
+        try {
+            Map<String, String> koepotaMembers = JsonResource.getInstance().get("koepotaMembers", Map.class);
+            boolean koepota_exist = koepotaMembers.containsKey(name.replaceFirst(" \\(.+\\)$", ""));
+            if (ameblo_url != null || twitter_url != null || koepota_exist) {
+                in.setHeader("ameblo_url", ameblo_url);
+                in.setHeader("twitter_url", twitter_url);
+                in.setHeader("name", name);
+                return true;
+            } else {
+                return false;
+            }
+        } catch (IOException ex) {
+            return false;
         }
     }
 

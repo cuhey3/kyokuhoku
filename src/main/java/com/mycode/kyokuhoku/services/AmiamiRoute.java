@@ -2,8 +2,7 @@ package com.mycode.kyokuhoku.services;
 
 import com.mycode.kyokuhoku.JsonResource;
 import com.mycode.kyokuhoku.Utility;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
+import com.mycode.kyokuhoku.WikiUtil;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -18,32 +17,38 @@ import org.jsoup.select.Elements;
 
 public class AmiamiRoute extends RouteBuilder {
 
+    private final JsonResource jsonResource = JsonResource.getInstance();
+
     @Override
     public void configure() throws Exception {
-        from("timer:amiami.crawl?period=2h").autoStartup(false)
-                .process(new AmiamiGetItemsProcessor());
+        from("timer:amiami.crawl?period=2h").autoStartup(false).routeId("amiami.crawl")
+                .process(Utility.GetDocumentProcessor(simple("http://www.amiami.jp/top/page/cal/goods.html")))
+                .process(jsonResource.load("amiamiTitleToWikiTitle", Map.class))
+                .process(jsonResource.load("amiamiItemMap", Map.class))
+                .process(new AmiamiGetLatestItemsProcessor())
+                .process(jsonResource.save("amiamiTitleToWikiTitle"))
+                .process(jsonResource.save("amiamiItemMap"));
     }
 }
 
-class AmiamiGetItemsProcessor implements Processor {
+class AmiamiGetLatestItemsProcessor implements Processor {
 
     public static final Pattern seriesPattern = Pattern.compile("^『(.+)』シリーズ$");
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        Document doc = Utility.getDocument("http://www.amiami.jp/top/page/cal/goods.html");
+        Document doc = exchange.getIn().getBody(Document.class);
         doc.select(".listitem:has(.originaltitle:matches(^$))").remove();
         Elements el = doc.select(".listitem");
-        JsonResource instance = JsonResource.getInstance();
-        Map<String, String> amiamiTitleToWikiTitle = instance.get("amiamiTitleToWikiTitle", Map.class);
-        Map<String, ArrayList<Map<String, String>>> amiamiItemMap = instance.get("amiamiItemMap", Map.class);
+        Map<String, String> amiamiTitleToWikiTitle = exchange.getIn().getHeader("amiamiTitleToWikiTitle", Map.class);
+        Map<String, ArrayList<Map<String, String>>> amiamiItemMap = exchange.getIn().getHeader("amiamiItemMap", Map.class);
         for (Element e : el) {
             String title = e.select(".originaltitle").text();
             String wikiTitle;
             if (amiamiTitleToWikiTitle.containsKey(title)) {
                 wikiTitle = amiamiTitleToWikiTitle.get(title);
             } else {
-                wikiTitle = getWikiTitle(title);
+                wikiTitle = WikiUtil.getWikiTitle(seriesPattern.matcher(title).replaceFirst("$1"));
                 amiamiTitleToWikiTitle.put(title, wikiTitle);
             }
             if (wikiTitle != null) {
@@ -72,26 +77,7 @@ class AmiamiGetItemsProcessor implements Processor {
                 amiamiItemMap.put(wikiTitle, items);
             }
         }
-        instance.save("amiamiTitleToWikiTitle", amiamiTitleToWikiTitle, exchange);
-        instance.save("amiamiItemMap", amiamiItemMap, exchange);
-    }
-
-    static String getWikiTitle(String title) throws UnsupportedEncodingException {
-        title = seriesPattern.matcher(title).replaceFirst("$1");
-        Document doc;
-        doc = Utility.getDocument("http://ja.wikipedia.org/w/api.php?action=query&format=xml&titles=" + URLEncoder.encode(title, "UTF-8"));
-        if (doc != null) {
-            if (doc.select("page[pageid]").isEmpty()) {
-                doc = Utility.getDocument("http://ja.wikipedia.org/w/api.php?action=query&format=xml&titles=" + URLEncoder.encode(title.replace("！", "!").replace("？", "?").replace("；", ";").replace("’", "'").replace("＆", "&").replace("：", ":").replace("＊", "*").replace("，", ",").replace("＠", "@"), "UTF-8"));
-                if (doc.select("page[pageid]").isEmpty()) {
-                    return null;
-                } else {
-                    return doc.select("page[pageid]").attr("title");
-                }
-            } else {
-                return doc.select("page[pageid]").attr("title");
-            }
-        }
-        return null;
+        exchange.getIn().setHeader("amiamiTitleToWikiTitle", amiamiTitleToWikiTitle);
+        exchange.getIn().setHeader("amiamiItemMap", amiamiItemMap);
     }
 }

@@ -23,18 +23,21 @@ public class KoepotaRoute extends RouteBuilder {
         String insert = "INSERT INTO events (id, day, title, link, hall1, hall2, member) SELECT :#${body[id]}, :#${body[day]}, :#${body[title]}, :#${body[link]}, :#${body[hall1]}, :#${body[hall2]}, :#${body[member]}";
         String update = "UPDATE events SET day=:#${body[day]},title=:#${body[title]} ,link=:#${body[link]},hall1=:#${body[hall1]},hall2=:#${body[hall2]},member=:#${body[member]} WHERE id=:#${body[id]}";
 
-        from("timer:koepota.crawl?period=1h").autoStartup(false)
-                .process(new KoepotaParseProcessor())
-                .to("seda:koepota.insert")
-                .filter(header("koepotaMembersUpdate"))
-                .to("seda:koepota.exist");
-        from("seda:koepota.insert")
+        from("direct:koepota.existUpdateSeiyu")
+                .process(new KoepotaExistUpdateSeiyuProcessor()).to("jdbc:ds")
+                .to("seda:aotagai.update");
+
+        from("direct:koepota.upsertEvents")
                 .filter(header("koepotaEventsUpdate"))
-                .to("seda:aotagai.update")
                 .split(body(List.class))
                 .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert);
-        from("seda:koepota.exist").process(new KoepotaExistProcessor()).to("jdbc:ds");
-        from("timer:faa?repeatCount=1").to("seda:koepota.aotagai50");
+
+        from("timer:koepota.crawl?period=1h").autoStartup(false).routeId("koepota.crawl")
+                .process(Utility.GetDocumentProcessor(simple("http://www.koepota.jp/eventschedule/")))
+                .process(new KoepotaParseProcessor())
+                .to("direct:koepota.upsertEvents")
+                .filter(header("koepotaMembersUpdate"))
+                .to("direct:koepota.existUpdateSeiyu");
     }
 }
 
@@ -45,7 +48,7 @@ class KoepotaParseProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        Document doc = Utility.getDocument("http://www.koepota.jp/eventschedule/");
+        Document doc = exchange.getIn().getBody(Document.class);
         Elements select = doc.select("#eventschedule tr");
         select.remove(0);
         LinkedHashMap<String, String> members = new LinkedHashMap<>();
@@ -99,7 +102,7 @@ class KoepotaParseProcessor implements Processor {
     }
 }
 
-class KoepotaExistProcessor implements Processor {
+class KoepotaExistUpdateSeiyuProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {

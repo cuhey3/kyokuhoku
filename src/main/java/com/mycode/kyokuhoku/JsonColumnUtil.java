@@ -1,7 +1,5 @@
 package com.mycode.kyokuhoku;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.jsonpatch.diff.JsonDiff;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -17,7 +15,6 @@ public class JsonColumnUtil {
     private final String id;
     private final String oldJson;
     private final List diff;
-    private final ObjectMapper mapper = new ObjectMapper();
     private final Kind kind;
 
     public JsonColumnUtil(Map row, Kind kind, Exchange exchange) throws IOException {
@@ -26,7 +23,7 @@ public class JsonColumnUtil {
         this.oldJson = (String) row.get(kind.jsonColumnName);
         String diffString = (String) row.get(kind.diffColumnName);
         if (diffString != null && diffString.startsWith("[")) {
-            this.diff = mapper.readValue(diffString, List.class);
+            this.diff = MyJsonUtil.mapper().readValue(diffString, List.class);
         } else {
             this.diff = new ArrayList<>();
         }
@@ -36,15 +33,15 @@ public class JsonColumnUtil {
         if (oldJson == null) {
             return null;
         } else {
-            return mapper.readValue(oldJson, type);
+            return MyJsonUtil.mapper().readValue(oldJson, type);
         }
     }
 
     public void save(Object o, Exchange exchange) throws IOException {
-        String jsonString = getJsonString(o);
+        String jsonString = MyJsonUtil.getJsonString(o);
         String diffString = null;
         if (oldJson != null) {
-            diffString = JsonDiff.asJson(mapper.readTree(oldJson), mapper.readTree(jsonString)).toString();
+            diffString = JsonDiff.asJson(MyJsonUtil.mapper().readTree(oldJson), MyJsonUtil.mapper().readTree(jsonString)).toString();
         }
         if (diffString == null || !diffString.equals("[]")) {
             ProducerTemplate pt = exchange.getContext().createProducerTemplate();
@@ -53,7 +50,7 @@ public class JsonColumnUtil {
             e.getIn().setHeader("json", jsonString);
             e.getIn().setHeader("update", System.currentTimeMillis());
             if (diffString != null) {
-                List readValue = mapper.readValue(diffString, List.class);
+                List readValue = MyJsonUtil.mapper().readValue(diffString, List.class);
                 Map map = new LinkedHashMap<>();
                 map.put("time", System.currentTimeMillis());
                 map.put("diff", readValue);
@@ -61,14 +58,6 @@ public class JsonColumnUtil {
                 e.getIn().setHeader("diff", getDiffString());
             }
             pt.send(kind.endpoint, e);
-        }
-    }
-
-    public String getJsonString(Object o) {
-        try {
-            return mapper.writeValueAsString(o);
-        } catch (JsonProcessingException t) {
-            return "";
         }
     }
 
@@ -80,7 +69,7 @@ public class JsonColumnUtil {
     }
 
     public String getDiffString() throws IOException {
-        return getJsonString(diff);
+        return MyJsonUtil.getJsonString(diff);
     }
 
     public enum Kind {

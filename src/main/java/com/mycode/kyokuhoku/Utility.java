@@ -3,6 +3,8 @@ package com.mycode.kyokuhoku;
 import java.util.Map;
 import java.util.Map.Entry;
 import org.apache.camel.Exchange;
+import org.apache.camel.Expression;
+import org.apache.camel.Processor;
 import org.jsoup.Connection;
 import org.jsoup.Connection.Response;
 import org.jsoup.Jsoup;
@@ -64,5 +66,36 @@ public class Utility {
         } else {
             return "{}";
         }
+    }
+
+    public static Processor GetBytesProcessor(final Expression urlExp, final Expression fileNameExp) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) throws Exception {
+                exchange.getIn().setBody(Utility.getBytes(urlExp.evaluate(exchange, String.class)));
+                exchange.getIn().setHeader(Exchange.FILE_NAME, fileNameExp.evaluate(exchange, String.class));
+            }
+        };
+    }
+
+    public static Processor GetDocumentProcessor(final Expression urlExp) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) throws Exception {
+                exchange.getIn().setBody(Utility.getDocument(urlExp.evaluate(exchange, String.class)));
+            }
+        };
+    }
+
+    public static Processor urlEncode(final Expression fromExp, final String header) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) throws Exception {
+                exchange.getIn().setHeader(header, fromExp.evaluate(exchange, Object.class));
+            }
+        };
     }
 }

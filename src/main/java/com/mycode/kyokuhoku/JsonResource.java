@@ -1,12 +1,12 @@
 package com.mycode.kyokuhoku;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.jsonpatch.diff.JsonDiff;
 import java.io.IOException;
 import java.util.*;
 import org.apache.camel.Exchange;
+import org.apache.camel.Expression;
 import org.apache.camel.Predicate;
+import org.apache.camel.Processor;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.impl.DefaultExchange;
 
@@ -16,20 +16,14 @@ public class JsonResource {
     private final LinkedHashMap<String, String> resources = new LinkedHashMap<>();
     private final LinkedHashMap<String, List> resourceDiff = new LinkedHashMap<>();
     private final ArrayList<LinkedHashMap<String, Object>> stats = new ArrayList<>();
-    private final ObjectMapper mapper = new ObjectMapper();
     private static boolean ready = false;
 
     public static JsonResource getInstance() {
         return instance;
     }
 
-    public <T extends Object> T unmarshal(String jsonString, Class<T> type) throws IOException {
-        T readValue = mapper.readValue(jsonString, type);
-        return readValue;
-    }
-
     public <T extends Object> T get(String resourceName, Class<T> type) throws IOException {
-        T readValue = mapper.readValue(resources.get(resourceName), type);
+        T readValue = MyJsonUtil.mapper().readValue(resources.get(resourceName), type);
         return readValue;
     }
 
@@ -46,7 +40,7 @@ public class JsonResource {
     }
 
     public void setDiff(String resourceName, String resource) throws IOException {
-        resourceDiff.put(resourceName, mapper.readValue(resource, List.class));
+        resourceDiff.put(resourceName, MyJsonUtil.mapper().readValue(resource, List.class));
     }
 
     public void setStats(String resourceName, Object o) {
@@ -73,7 +67,7 @@ public class JsonResource {
     }
 
     public String getDiffString(String resourceName) throws IOException {
-        return getJsonString(resourceDiff.get(resourceName));
+        return MyJsonUtil.getJsonString(resourceDiff.get(resourceName));
     }
 
     public static Predicate isReady() {
@@ -90,19 +84,11 @@ public class JsonResource {
         ready = true;
     }
 
-    public String getJsonString(Object o) {
-        try {
-            return mapper.writeValueAsString(o);
-        } catch (JsonProcessingException t) {
-            return "";
-        }
-    }
-
     public boolean save(String resourceName, Object o, Exchange exchange) throws IOException {
-        String jsonString = getJsonString(o);
-        String diff = JsonDiff.asJson(mapper.readTree(resources.get(resourceName)), mapper.readTree(jsonString)).toString();
+        String jsonString = MyJsonUtil.getJsonString(o);
+        String diff = JsonDiff.asJson(MyJsonUtil.mapper().readTree(resources.get(resourceName)), MyJsonUtil.mapper().readTree(jsonString)).toString();
         if (!diff.equals("[]")) {
-            List readValue = mapper.readValue(diff, List.class);
+            List readValue = MyJsonUtil.mapper().readValue(diff, List.class);
             Map map = new LinkedHashMap<>();
             map.put("time", System.currentTimeMillis());
             map.put("diff", readValue);
@@ -120,5 +106,58 @@ public class JsonResource {
             return true;
         }
         return false;
+    }
+
+    public Processor save(final String resourceName, final Expression exp) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) {
+                try {
+                    save(resourceName, exp.evaluate(exchange, Object.class), exchange);
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
+            }
+        };
+    }
+
+    public Processor save(final String resourceName) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) {
+                try {
+                    save(resourceName, exchange.getIn().getHeader(resourceName), exchange);
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
+            }
+        };
+    }
+
+    public Predicate saveWithCheck(final String resourceName, final Expression exp) {
+        return new Predicate() {
+
+            @Override
+            public boolean matches(Exchange exchange) {
+                try {
+                    return save(resourceName, exp.evaluate(exchange, Object.class), exchange);
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                    return false;
+                }
+            }
+        };
+    }
+
+    public Processor load(final String resourceName, final Class type) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) throws Exception {
+                exchange.getIn().setHeader(resourceName, get(resourceName, type));
+            }
+        };
     }
 }
