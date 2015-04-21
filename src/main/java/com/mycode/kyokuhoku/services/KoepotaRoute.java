@@ -49,25 +49,8 @@ public class KoepotaRoute extends RouteBuilder {
                 .process(Utility.mapListToListByOneField("id"))
                 .setHeader("undone", body(List.class))
                 .to("direct:koepota.getDocument")
-                .process(new Processor() {
-
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        List undone = exchange.getIn().getHeader("undone", List.class);
-                        Document doc = exchange.getIn().getBody(Document.class);
-                        Elements select = doc.select("#eventschedule tr");
-                        select.remove(0);
-                        final Pattern linkToIdPattern = Pattern.compile("^http://www\\.koepota\\.jp/eventschedule/(.+?)\\.html$");
-                        for (Element e : select) {
-                            Element link_el = e.select("td.title a[href]").first();
-                            String link = link_el.attr("href");
-                            String id = linkToIdPattern.matcher(link).replaceFirst("$1");
-                            undone.remove(id);
-                        }
-                        exchange.getIn().setBody(undone);
-                        System.out.println(undone.size());
-                    }
-                }).split(body(List.class))
+                .process(new KoepotaDoneEventProcessor())
+                .split(body(List.class))
                 .to("sql: update events set done=true where id=:#${body}?dataSource=ds");
     }
 }
@@ -152,5 +135,25 @@ class KoepotaExistUpdateSeiyuProcessor implements Processor {
         String string = new String(sb);
         String query = "update seiyu set koepota_exist_now = case when name in (%s) then true else false end, koepota_exist = case when name in (%s) then true else koepota_exist end";
         exchange.getIn().setBody(String.format(query, string, string));
+    }
+}
+
+class KoepotaDoneEventProcessor implements Processor {
+
+    final Pattern linkToIdPattern = Pattern.compile("^http://www\\.koepota\\.jp/eventschedule/(.+?)\\.html$");
+
+    @Override
+    public void process(Exchange exchange) throws Exception {
+        List undone = exchange.getIn().getHeader("undone", List.class);
+        Document doc = exchange.getIn().getBody(Document.class);
+        Elements select = doc.select("#eventschedule tr");
+        select.remove(0);
+        for (Element e : select) {
+            Element link_el = e.select("td.title a[href]").first();
+            String link = link_el.attr("href");
+            String id = linkToIdPattern.matcher(link).replaceFirst("$1");
+            undone.remove(id);
+        }
+        exchange.getIn().setBody(undone);
     }
 }
