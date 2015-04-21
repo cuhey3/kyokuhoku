@@ -15,54 +15,59 @@
         </style>
         <script src="//cdnjs.cloudflare.com/ajax/libs/angular.js/1.2.0/angular.min.js"></script>
         <script>
-            angular.module("myapp", []).controller("myctrl", function($scope, $window) {
-                $scope.images = [];
-                $scope.count = 0;
-                $scope.isFocus = true;
-                $scope.title = function() {
-                    if ($scope.isFocus || $scope.count === 0) {
-                        return "ameblo画像アンテナ";
+                    angular.module("myapp", []).controller("myctrl", function ($scope, $window) {
+                        $scope.limit = 20;
+                        $scope.pluslimit = function () {
+                            $scope.limit += 20;
+                        };
+                        $scope.images = [];
+                        $scope.count = 0;
+                        $scope.isFocus = true;
+                        $scope.title = function () {
+                            if ($scope.isFocus || $scope.count === 0) {
+                                return "ameblo画像アンテナ";
 
-                    } else {
-                        return "(" + $scope.count + ") ameblo画像アンテナ";
-                    }
+                            } else {
+                                return "(" + $scope.count + ") ameblo画像アンテナ";
+                            }
 
-                };
-                var onFocus = function() {
-                    $scope.isFocus = true;
-                    $scope.count = 0;
-                    $scope.$apply();
-                };
-                var onBlur = function() {
-                    $scope.isFocus = false;
-                    $scope.$apply();
-                };
-                $window.onfocus = onFocus;
-                $window.onblur = onBlur;
-                wsinit($scope);
-            });
+                        };
+                        var onFocus = function () {
+                            $scope.isFocus = true;
+                            $scope.count = 0;
+                            $scope.$apply();
+                        };
+                        var onBlur = function () {
+                            $scope.isFocus = false;
+                            $scope.$apply();
+                        };
+                        $window.onfocus = onFocus;
+                        $window.onblur = onBlur;
+                        wsinit($scope);
+                    });
 
-            function wsinit(scope) {
-                scope.ws = new WebSocket("ws://" + window.location.host + "/ameblo_antenna/ws/");
-                scope.ws.onopen = function() {
-                    var req = [];
-                    req.push("init");
-                    scope.ws.send(JSON.stringify(req));
-                };
-                scope.ws.onmessage = function(message) {
-                    var obj = JSON.parse(message.data);
-                    if (obj.name) {
-                        scope.images.unshift(obj);
-                        scope.count++;
-                    } else {
-                        scope.images = obj;
-                    }
-                    scope.$apply();
-                };
-                scope.ws.onclose = function() {
-                    wsinit(scope);
-                };
-            };
+                    function wsinit(scope) {
+                        scope.ws = new WebSocket("ws://" + window.location.host + "/ameblo_antenna/ws/");
+                        scope.ws.onopen = function () {
+                            var req = [];
+                            req.push("init");
+                            scope.ws.send(JSON.stringify(req));
+                        };
+                        scope.ws.onmessage = function (message) {
+                            var obj = JSON.parse(message.data);
+                            if (obj.name) {
+                                scope.images.unshift(obj);
+                                scope.limit++;
+                                scope.count++;
+                            } else {
+                                scope.images = obj;
+                            }
+                            scope.$apply();
+                        };
+                        scope.ws.onclose = function () {
+                            wsinit(scope);
+                        };
+                    };
         </script>
         <style>
         </style>
@@ -70,6 +75,13 @@
     <body class="container">
         <h2>ameblo画像アンテナ</h2>
         <a href="../">極北研TOP</a><br />
-        <div ng-repeat="image in images"><a ng-href="{{image.ameblo_url}}" target="_blank"><img ng-src="{{image.ameblo_last_img}}" alt="{{image.ameblo_title}}" /></a><br /><a ng-href="{{image.ameblo_url}}" style="color:black;" target="_blank">{{image.name}}</a>　{{image.ameblo_title}}</div>
+        <div ng-repeat="image in images|limitTo:limit">
+            <a ng-href="{{image.ameblo_url}}" target="_blank">
+                <img ng-src="{{image.ameblo_last_img}}" alt="{{image.ameblo_title}}" />
+            </a>
+            <br />
+            <a ng-href="{{image.ameblo_url}}" style="color:black;" target="_blank">{{image.name}}</a>　{{image.ameblo_title}}
+        </div>
+        <input class="form-control" type="button" ng-if="limit < images.length" ng-click="pluslimit()" value="次の20件を表示" />
     </body>
 </html>
