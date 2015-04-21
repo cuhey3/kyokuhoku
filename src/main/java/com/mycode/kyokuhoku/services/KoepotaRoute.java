@@ -44,11 +44,10 @@ public class KoepotaRoute extends RouteBuilder {
                 .filter(header("koepotaMembersUpdate"))
                 .to("direct:koepota.existUpdateSeiyu");
 
-        //from("seda:koepota.done")
-        from("timer:foo?repeatCount=1")
+        from("seda:koepota.done")
                 .to("sql:select id from events where done is null?dataSource=ds")
-                .process(Utility.listToMapByUniqueKey("id"))
-                .setHeader("undone", body())
+                .process(Utility.mapListToListByOneField("id"))
+                .setHeader("undone", body(List.class))
                 .to("direct:koepota.getDocument")
                 .process(new Processor() {
 
@@ -66,6 +65,7 @@ public class KoepotaRoute extends RouteBuilder {
                             undone.remove(id);
                         }
                         exchange.getIn().setBody(undone);
+                        System.out.println(undone.size());
                     }
                 }).split(body(List.class))
                 .to("sql: update events set done=true where id=:#${body}?dataSource=ds");
