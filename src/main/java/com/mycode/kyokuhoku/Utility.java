@@ -1,5 +1,6 @@
 package com.mycode.kyokuhoku;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,7 +14,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
 public class Utility {
-
+    
     public static Document getDocument(String url) {
         Document doc = null;
         int retry = 0;
@@ -26,7 +27,7 @@ public class Utility {
         }
         return doc;
     }
-
+    
     public static byte[] getBytes(String url) {
         Response response = null;
         int retry = 0;
@@ -43,7 +44,7 @@ public class Utility {
             return new byte[]{};
         }
     }
-
+    
     public static void mapToHeader(Exchange exchange, Map<String, Object> map, boolean rewrite) {
         Map<String, Object> headers = exchange.getIn().getHeaders();
         for (Entry<String, Object> entry : map.entrySet()) {
@@ -52,7 +53,7 @@ public class Utility {
             }
         }
     }
-
+    
     public static String getJson(String url) {
         int retry = 0;
         Connection.Response response = null;
@@ -69,10 +70,10 @@ public class Utility {
             return "{}";
         }
     }
-
+    
     public static Processor GetBytesProcessor(final Expression urlExp, final Expression fileNameExp) {
         return new Processor() {
-
+            
             @Override
             public void process(Exchange exchange) throws Exception {
                 exchange.getIn().setHeader(Exchange.FILE_NAME, fileNameExp.evaluate(exchange, String.class));
@@ -80,30 +81,30 @@ public class Utility {
             }
         };
     }
-
+    
     public static Processor GetDocumentProcessor(final Expression urlExp) {
         return new Processor() {
-
+            
             @Override
             public void process(Exchange exchange) throws Exception {
                 exchange.getIn().setBody(Utility.getDocument(urlExp.evaluate(exchange, String.class)));
             }
         };
     }
-
+    
     public static Processor urlEncode(final Expression fromExp, final String header) {
         return new Processor() {
-
+            
             @Override
             public void process(Exchange exchange) throws Exception {
                 exchange.getIn().setHeader(header, fromExp.evaluate(exchange, Object.class));
             }
         };
     }
-
+    
     public static Processor listToMapByUniqueKey(final String key) {
         return new Processor() {
-
+            
             @Override
             public void process(Exchange exchange) throws Exception {
                 List<Map<String, Object>> list = exchange.getIn().getBody(List.class);
@@ -111,6 +112,21 @@ public class Utility {
                 for (Map<String, Object> map : list) {
                     String k = (String) map.get(key);
                     result.put(k, map);
+                }
+                exchange.getIn().setBody(result);
+            }
+        };
+    }
+    
+    public static Processor MapListToListByOneField(final String key) {
+        return new Processor() {
+            
+            @Override
+            public void process(Exchange exchange) throws Exception {
+                List<Map> mapList = exchange.getIn().getBody(List.class);
+                ArrayList result = new ArrayList();
+                for (Map map : mapList) {
+                    result.add(map.get(key));
                 }
                 exchange.getIn().setBody(result);
             }

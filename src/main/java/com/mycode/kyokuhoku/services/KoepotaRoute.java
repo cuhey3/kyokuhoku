@@ -28,17 +28,47 @@ public class KoepotaRoute extends RouteBuilder {
                 .to("seda:aotagai.update")
                 .to("seda:seiyu.twitter");
 
+        from("direct:koepota.getDocument")
+                .process(Utility.GetDocumentProcessor(simple("http://www.koepota.jp/eventschedule/")));
+
         from("direct:koepota.upsertEvents")
                 .filter(header("koepotaEventsUpdate"))
+                .to("seda:koepota.done")
                 .split(body(List.class))
                 .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert);
 
         from("timer:koepota.crawl?period=1h").autoStartup(false).routeId("koepota.crawl")
-                .process(Utility.GetDocumentProcessor(simple("http://www.koepota.jp/eventschedule/")))
+                .to("direct:koepota.getDocument")
                 .process(new KoepotaParseProcessor())
                 .to("direct:koepota.upsertEvents")
                 .filter(header("koepotaMembersUpdate"))
                 .to("direct:koepota.existUpdateSeiyu");
+
+        //from("seda:koepota.done")
+        from("timer:foo?repeatCount=1")
+                .to("sql:select id from events where done is null?dataSource=ds")
+                .process(Utility.listToMapByUniqueKey("id"))
+                .setHeader("undone", body())
+                .to("direct:koepota.getDocument")
+                .process(new Processor() {
+
+                    @Override
+                    public void process(Exchange exchange) throws Exception {
+                        List undone = exchange.getIn().getHeader("undone", List.class);
+                        Document doc = exchange.getIn().getBody(Document.class);
+                        Elements select = doc.select("#eventschedule tr");
+                        select.remove(0);
+                        final Pattern linkToIdPattern = Pattern.compile("^http://www\\.koepota\\.jp/eventschedule/(.+?)\\.html$");
+                        for (Element e : select) {
+                            Element link_el = e.select("td.title a[href]").first();
+                            String link = link_el.attr("href");
+                            String id = linkToIdPattern.matcher(link).replaceFirst("$1");
+                            undone.remove(id);
+                        }
+                        exchange.getIn().setBody(undone);
+                    }
+                }).split(body(List.class))
+                .to("sql: update events set done=true where id=:#${body}?dataSource=ds");
     }
 }
 
