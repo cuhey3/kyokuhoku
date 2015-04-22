@@ -1,5 +1,6 @@
 package com.mycode.kyokuhoku;
 
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,7 +46,7 @@ public class Utility {
         }
     }
 
-    public static void mapToHeader(Exchange exchange, Map<String, Object> map, boolean rewrite) {
+    public static void mapBodyToHeader(Exchange exchange, Map<String, Object> map, boolean rewrite) {
         Map<String, Object> headers = exchange.getIn().getHeaders();
         for (Entry<String, Object> entry : map.entrySet()) {
             if (rewrite || !headers.containsKey(entry.getKey())) {
@@ -71,7 +72,7 @@ public class Utility {
         }
     }
 
-    public static Processor GetBytesProcessor(final Expression urlExp, final Expression fileNameExp) {
+    public static Processor getBytesProcessor(final Expression urlExp, final Expression fileNameExp) {
         return new Processor() {
 
             @Override
@@ -82,7 +83,7 @@ public class Utility {
         };
     }
 
-    public static Processor GetDocumentProcessor(final Expression urlExp) {
+    public static Processor getDocumentProcessor(final Expression urlExp) {
         return new Processor() {
 
             @Override
@@ -92,12 +93,22 @@ public class Utility {
         };
     }
 
+    public static Processor getJsonProcessor(final Expression urlExp) {
+        return new Processor() {
+
+            @Override
+            public void process(Exchange exchange) throws Exception {
+                exchange.getIn().setBody(Utility.getJson(urlExp.evaluate(exchange, String.class)));
+            }
+        };
+    }
+
     public static Processor urlEncode(final Expression fromExp, final String header) {
         return new Processor() {
 
             @Override
             public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(header, fromExp.evaluate(exchange, Object.class));
+                exchange.getIn().setHeader(header, URLEncoder.encode(fromExp.evaluate(exchange, String.class), "UTF-8"));
             }
         };
     }

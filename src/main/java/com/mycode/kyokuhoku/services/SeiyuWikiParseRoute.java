@@ -1,7 +1,6 @@
 package com.mycode.kyokuhoku.services;
 
 import com.mycode.kyokuhoku.JsonColumnUtil;
-import com.mycode.kyokuhoku.JsonResource;
 import com.mycode.kyokuhoku.MyJsonUtil;
 import com.mycode.kyokuhoku.Utility;
 import java.net.URLEncoder;
@@ -17,36 +16,35 @@ import java.util.regex.Pattern;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.model.dataformat.JsonLibrary;
 import org.jsoup.nodes.Document;
 
 public class SeiyuWikiParseRoute extends RouteBuilder {
 
     @Override
     public void configure() throws Exception {
-        from("direct:seiyu_wiki_parse.parse").process(new SeiyuWikiParseJsonRequestProcessor())
-                .unmarshal().json(JsonLibrary.Jackson, Map.class)
+        from("direct:seiyu_wiki_parse.parse")
+                .setHeader("page", simple("${body[page]}"))
+                .process(Utility.urlEncode(simple("${header.page}"), "encodedPage"))
+                .process(Utility.getJsonProcessor(simple("http://ja.wikipedia.org/w/api.php?action=parse&page=${header.encodedPage}&prop=wikitext|links&format=json&redirects")))
+                .to("direct:utility.unmarshal.jsonObject")
                 .process(new SeiyuWikiParseMainProcessor());
+
         from("direct:seiyu_wiki_parse.charname").process(new SeiyuWikiParseCharNameProcessor());
-        from("timer:fooo?period=5m")
-                .to("sql:select name from seiyu where exintro is null limit 1?dataSource=ds")
-                .filter(simple("${body.size} == 1")).setBody(simple("${body[0][name]}"))
+
+        from("seda:seiyuwikiparse.getIntro")
+                .to("sql:select name from seiyu where exintro is null?dataSource=ds")
+                .split(body(List.class))
+                .setHeader("name", simple("${body[name]}"))
+                .process(Utility.urlEncode(simple("${header.name}"), "encodedName"))
+                .process(Utility.getDocumentProcessor(simple("http://ja.wikipedia.org/w/api.php?format=xml&action=query&titles=${header.encodedName}&prop=extracts&exintro&explaintext")))
                 .process(new SeiyuWikiGetIntroProcessor())
-                .to("sql:update seiyu set pageid =:#${header.pageid}, exintro =:#${header.exintro} where name =:#${body}?dataSource=ds");
+                .to("sql:update seiyu set pageid =:#${header.pageid}, exintro =:#${header.exintro} where name =:#${header.name}?dataSource=ds")
+                .to("log:seiyuwikiparse.getIntro.sql?showHeaders=true");
+
         from("timer:foofoo?period=1m")
                 .to("sql:select * from seiyu where koepota_exist and seiyu_ignore is null order by (to_links_last_crawl is not null),to_links_last_crawl limit 1?dataSource=ds&delay=1m").autoStartup(false)
                 .process(new SeiyuToLinksProcessor())
                 .to("sql:update seiyu set to_links_last_crawl =:#${header.now}, to_links_count =:#${header.to_links_count}, to_links_exists_count =:#${header.to_links_exists_count} where name=:#${header.name}?dataSource=ds");
-    }
-}
-
-class SeiyuWikiParseJsonRequestProcessor implements Processor {
-
-    @Override
-    public void process(Exchange exchange) throws Exception {
-        String page = (String) exchange.getIn().getBody(Map.class).get("page");
-        exchange.getIn().setHeader("page", page);
-        exchange.getIn().setBody(Utility.getJson("http://ja.wikipedia.org/w/api.php?action=parse&page=" + URLEncoder.encode(page, "UTF-8") + "&prop=wikitext|links&format=json&redirects"));
     }
 }
 
@@ -301,8 +299,7 @@ class SeiyuWikiGetIntroProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        String name = exchange.getIn().getBody(String.class);
-        Document doc = Utility.getDocument("http://ja.wikipedia.org/w/api.php?format=xml&action=query&titles=" + URLEncoder.encode(name, "UTF-8") + "&prop=extracts&exintro&explaintext");
+        Document doc = exchange.getIn().getBody(Document.class);
         try {
             exchange.getIn().setHeader("pageid", doc.select("page[pageid]").first().attr("pageid"));
             exchange.getIn().setHeader("exintro", doc.select("extract").text().replaceFirst("\\^.+", ""));

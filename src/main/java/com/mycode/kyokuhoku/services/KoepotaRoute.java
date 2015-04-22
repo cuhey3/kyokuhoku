@@ -29,7 +29,7 @@ public class KoepotaRoute extends RouteBuilder {
                 .to("seda:seiyu.twitter");
 
         from("direct:koepota.getDocument")
-                .process(Utility.GetDocumentProcessor(simple("http://www.koepota.jp/eventschedule/")));
+                .process(Utility.getDocumentProcessor(simple("http://www.koepota.jp/eventschedule/")));
 
         from("direct:koepota.upsertEvents")
                 .filter(header("koepotaEventsUpdate"))

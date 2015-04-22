@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.camel.Exchange;
-import org.apache.camel.Expression;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.model.dataformat.JsonLibrary;
@@ -21,7 +20,7 @@ public class UtilityRoute extends RouteBuilder {
         from("direct:utility.unmarshal.jsonArray").unmarshal().json(JsonLibrary.Jackson, List.class);
         from("direct:utility.marshal.json").marshal().json(JsonLibrary.Jackson).setBody(body(String.class).append(""));
         from("timer:knock?period=30m").process(new UtilityKnockerProcessor());
-        from("direct:utility.mapToHeader").process(new UtilityMapToHeaderProcessor());
+        from("direct:utility.mapBodyToHeader").process(new UtilityMapBodyToHeaderProcessor());
         from("direct:utility.getRandom").process(new UtilityGetRandomProcessor());
         from("direct:utility.bodyToMessage").process(new UtilityBodyToMessageProcessor());
         from("direct:utility.startAllRoutes").process(new UtilityStartAllRoutesProcessor());
@@ -36,11 +35,11 @@ class UtilityKnockerProcessor implements Processor {
     }
 }
 
-class UtilityMapToHeaderProcessor implements Processor {
+class UtilityMapBodyToHeaderProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        Utility.mapToHeader(exchange, exchange.getIn().getBody(Map.class), false);
+        Utility.mapBodyToHeader(exchange, exchange.getIn().getBody(Map.class), false);
     }
 }
 

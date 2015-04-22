@@ -22,7 +22,7 @@ public class EnglishQuizRoute extends RouteBuilder {
     @Override
     public void configure() throws Exception {
         from("direct:english_quiz.login")
-                .to("direct:utility.mapToHeader")
+                .to("direct:utility.mapBodyToHeader")
                 .to("sql:select * from quizuser where username = :#${header.username} and password = :#${header.password}?dataSource=ds")
                 .choice().when(new EnglishQuizLoginPredicate())
                 .to("seda:english_quiz.elo")
@@ -55,7 +55,7 @@ public class EnglishQuizRoute extends RouteBuilder {
                 .otherwise().setHeader("message").constant("ログインしていません。").to(MESSAGE_ENDPOINT);
 
         from("direct:english_quiz.createUser")
-                .to("direct:utility.mapToHeader")
+                .to("direct:utility.mapBodyToHeader")
                 .to("sql:select * from quizuser where username = :#${header.username}?dataSource=ds")
                 .choice().when(new EnglishQuizUserNotExistPredicate())
                 .to("direct:english_quiz.insertUser")

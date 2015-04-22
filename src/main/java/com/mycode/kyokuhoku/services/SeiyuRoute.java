@@ -23,18 +23,22 @@ public class SeiyuRoute extends RouteBuilder {
     @Override
     public void configure() throws Exception {
         String insert = "INSERT INTO seiyu (name, ameblo_url, twitter_url) SELECT :#${header.name}, :#${header.ameblo_url}, :#${header.twitter_url}";
-        String upsert = "UPDATE seiyu SET ameblo_url=case when ameblo_url is null then :#${header.ameblo_url} else ameblo_url end, twitter_url=case when twitter_url is null then :#${header.twitter_url} else twitter_url end WHERE name=:#${header.name}";
+        String update = "UPDATE seiyu SET ameblo_url=case when ameblo_url is null then :#${header.ameblo_url} else ameblo_url end, twitter_url=case when twitter_url is null then :#${header.twitter_url} else twitter_url end WHERE name=:#${header.name}";
 
         from("direct:seiyu.getInfo")
-                .process(Utility.urlEncode(body(), "encodedName"))
-                .process(Utility.GetDocumentProcessor(simple("http://ja.wikipedia.org/w/api.php?action=parse&prop=externallinks&page=${header.encodedName}&format=xml&redirects")))
+                .process(Utility.urlEncode(body(String.class), "encodedName"))
+                .process(Utility.getDocumentProcessor(simple("http://ja.wikipedia.org/w/api.php?action=parse&prop=externallinks&page=${header.encodedName}&format=xml&redirects")))
                 .filter(new SeiyuGetInfoPredicate())
-                .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", upsert, insert);
+                .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert)
+                .to("log:seiyu.getInfo.sql?showHeaders=true")
+                .filter(header("exintro").isNull())
+                .to("seda:seiyuwikiparse.getIntro");
 
         from("timer:seiyu.crawl?period=24h").autoStartup(false).routeId("seiyu.crawl")
-                .to("sql:select name from seiyu where seiyu_ignore is null?dataSource=ds")
-                .split(body(List.class)).throttle(1).timePeriodMillis(30000)
-                .setBody(simple("${body[name]}"))
+                .to("sql:select name,twitter_url, ameblo_url, koepota_exist, exintro from seiyu where seiyu_ignore is null and (twitter_url is null or ameblo_url is null)?dataSource=ds")
+                .split(body(List.class)).throttle(1).timePeriodMillis(60000)
+                .to("direct:utility.mapBodyToHeader")
+                .setBody(simple("${header.name}"))
                 .to("direct:seiyu.getInfo");
 
         from("direct:seiyu.new")
@@ -48,54 +52,54 @@ public class SeiyuRoute extends RouteBuilder {
                 .to("direct:seiyu.new")
                 .to("direct:koepota.existUpdateSeiyu"); // external:koepota
 /*        from("seda:seiyu.twitter")
-                .to("sql:select * from twitter_oauth?dataSource=ds")
-                .setBody(simple("${body[0]}")).to("direct:utility.mapToHeader")
-                .to("sql:select twitter_url from seiyu where twitter_url is not null and seiyu_ignore is null and koepota_exist_now?dataSource=ds")
-                .process(new Processor() {
+         .to("sql:select * from twitter_oauth?dataSource=ds")
+         .setBody(simple("${body[0]}")).to("direct:utility.mapBodyToHeader")
+         .to("sql:select twitter_url from seiyu where twitter_url is not null and seiyu_ignore is null and koepota_exist_now?dataSource=ds")
+         .process(new Processor() {
 
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        Map<String, Object> headers = exchange.getIn().getHeaders();
-                        ConfigurationBuilder cb = new ConfigurationBuilder();
-                        cb.setDebugEnabled(true)
-                        .setOAuthConsumerKey((String) headers.get("consumer_key"))
-                        .setOAuthConsumerSecret((String) headers.get("consumer_secret"))
-                        .setOAuthAccessToken((String) headers.get("access_token"))
-                        .setOAuthAccessTokenSecret((String) headers.get("access_token_secret"));
-                        TwitterFactory tf = new TwitterFactory(cb.build());
-                        Twitter twitter = tf.getInstance();
-                        UserList userList = twitter.getUserLists("Cu_hey").get(0);
-                        long listId = userList.getId();
-                        List<Map<String, String>> body = exchange.getIn().getBody(List.class);
-                        ArrayList<String> users = new ArrayList<>();
-                        for (Map<String, String> map : body) {
-                            users.add(map.get("twitter_url").replaceFirst("(https?://)?twitter.com/", "").replaceFirst("/$", ""));
-                        }
-                        PagableResponseList<User> userListMembers = twitter.getUserListMembers(listId, -1L);
-                        Iterator<User> iterator = userListMembers.iterator();
-                        while (iterator.hasNext()) {
-                            User user = iterator.next();
-                            String screenName = user.getScreenName();
-                            if (users.contains(screenName)) {
-                                users.remove(screenName);
-                            } else {
-                                twitter.destroyUserListMember(listId, screenName);
-                            }
-                        }
-                        ArrayList<String> sub = new ArrayList<>();
-                        for (int i = 0; i < users.size(); i++) {
-                            sub.add(users.get(i));
-                            if (sub.size() == 50) {
-                                twitter.createUserListMembers(listId, sub.toArray(new String[50]));
-                                sub = new ArrayList<>();
-                            }
-                        }
-                        if (!sub.isEmpty()) {
-                            twitter.createUserListMembers(listId, sub.toArray(new String[sub.size()]));
-                        }
-                        System.out.println(users.size() + " updated.");
-                    }
-                });*/
+         @Override
+         public void process(Exchange exchange) throws Exception {
+         Map<String, Object> headers = exchange.getIn().getHeaders();
+         ConfigurationBuilder cb = new ConfigurationBuilder();
+         cb.setDebugEnabled(true)
+         .setOAuthConsumerKey((String) headers.get("consumer_key"))
+         .setOAuthConsumerSecret((String) headers.get("consumer_secret"))
+         .setOAuthAccessToken((String) headers.get("access_token"))
+         .setOAuthAccessTokenSecret((String) headers.get("access_token_secret"));
+         TwitterFactory tf = new TwitterFactory(cb.build());
+         Twitter twitter = tf.getInstance();
+         UserList userList = twitter.getUserLists("Cu_hey").get(0);
+         long listId = userList.getId();
+         List<Map<String, String>> body = exchange.getIn().getBody(List.class);
+         ArrayList<String> users = new ArrayList<>();
+         for (Map<String, String> map : body) {
+         users.add(map.get("twitter_url").replaceFirst("(https?://)?twitter.com/", "").replaceFirst("/$", ""));
+         }
+         PagableResponseList<User> userListMembers = twitter.getUserListMembers(listId, -1L);
+         Iterator<User> iterator = userListMembers.iterator();
+         while (iterator.hasNext()) {
+         User user = iterator.next();
+         String screenName = user.getScreenName();
+         if (users.contains(screenName)) {
+         users.remove(screenName);
+         } else {
+         twitter.destroyUserListMember(listId, screenName);
+         }
+         }
+         ArrayList<String> sub = new ArrayList<>();
+         for (int i = 0; i < users.size(); i++) {
+         sub.add(users.get(i));
+         if (sub.size() == 50) {
+         twitter.createUserListMembers(listId, sub.toArray(new String[50]));
+         sub = new ArrayList<>();
+         }
+         }
+         if (!sub.isEmpty()) {
+         twitter.createUserListMembers(listId, sub.toArray(new String[sub.size()]));
+         }
+         System.out.println(users.size() + " updated.");
+         }
+         });*/
     }
 }
 
@@ -145,17 +149,18 @@ class SeiyuGetInfoPredicate implements Predicate {
         try {
             Map<String, String> koepotaMembers = JsonResource.getInstance().get("koepotaMembers", Map.class);
             boolean koepota_exist = koepotaMembers.containsKey(name.replaceFirst(" \\(.+\\)$", ""));
-            if (ameblo_url != null || twitter_url != null || koepota_exist) {
+            if (in.getHeader("ameblo_url") == null && ameblo_url != null
+                    || in.getHeader("twitter_url") == null && twitter_url != null
+                    || in.getHeader("koepota_exist") == null && koepota_exist) {
                 in.setHeader("ameblo_url", ameblo_url);
                 in.setHeader("twitter_url", twitter_url);
                 in.setHeader("name", name);
                 return true;
-            } else {
-                return false;
             }
         } catch (IOException ex) {
             return false;
         }
+        return false;
     }
 
     public String getSpecificLink(Elements el, Document doc) {

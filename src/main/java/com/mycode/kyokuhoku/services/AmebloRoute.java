@@ -31,8 +31,8 @@ public class AmebloRoute extends RouteBuilder {
                 .to("direct:websocket.setSend");
 
         from("direct:ameblo_antenna.newImage")
-                .to("direct:utility.mapToHeader")
-                .process(Utility.GetBytesProcessor(simple("${header.ameblo_raw_img_url}"), simple("${header.ameblo_last_img}")))
+                .to("direct:utility.mapBodyToHeader")
+                .process(Utility.getBytesProcessor(simple("${header.ameblo_raw_img_url}"), simple("${header.ameblo_last_img}")))
                 .toF("file:%s/ameblo_antenna/", Settings.PUBLIC_RESOURCE_PATH)
                 .process(new AmebloNotifyNewImageInfoProcessor())
                 .to("direct:websocket.setSendToAll").to("direct:send/ameblo_antenna");
@@ -50,7 +50,7 @@ public class AmebloRoute extends RouteBuilder {
             from("timer:ameblo_antenna.fillExistImages?repeatCount=1").routeId("ameblo_antenna.fillExistImages")
                     .to("sql:select * from seiyu where ameblo_last_img is not null and ameblo_raw_img_url is not null and seiyu_ignore is null?dataSource=ds")
                     .split(body(List.class))
-                    .process(Utility.GetBytesProcessor(simple("${body[ameblo_raw_img_url]}"), simple("${body[ameblo_last_img]}")))
+                    .process(Utility.getBytesProcessor(simple("${body[ameblo_raw_img_url]}"), simple("${body[ameblo_last_img]}")))
                     .toF("file:%s/ameblo_antenna/", Settings.PUBLIC_RESOURCE_PATH);
         }
     }

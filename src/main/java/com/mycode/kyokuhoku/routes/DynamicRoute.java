@@ -32,7 +32,7 @@ class DynamicParseMessageProcessor implements Processor {
                     Map<String, Object> parsedHeader = (Map<String, Object>) req.get(2);
                     parsedHeader.remove("send");
                     parsedHeader.remove(SEND_TO_ALL);
-                    Utility.mapToHeader(exchange, parsedHeader, true);
+                    Utility.mapBodyToHeader(exchange, parsedHeader, true);
                 }
             case 2:
                 exchange.getIn().setBody(req.get(1));

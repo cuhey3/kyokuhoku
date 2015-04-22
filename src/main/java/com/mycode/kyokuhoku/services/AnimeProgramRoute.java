@@ -28,7 +28,7 @@ public class AnimeProgramRoute extends RouteBuilder {
     public void configure() throws Exception {
         from("direct:anime_program.page")
                 .setHeader("program_id", simple("${body}"))
-                .process(Utility.GetDocumentProcessor(simple("http://tv.yahoo.co.jp${body}")))
+                .process(Utility.getDocumentProcessor(simple("http://tv.yahoo.co.jp${body}")))
                 .process(new AnimeProgramParsePageProcessor());
 
         from("seda:anime_program.insert").toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert);
@@ -42,7 +42,7 @@ public class AnimeProgramRoute extends RouteBuilder {
                 .to("seda:anime_program.insert");
 
         from("timer:anime_program.onair?period=3m").autoStartup(false).routeId("anime_program.onair")
-                .process(Utility.GetDocumentProcessor(simple("http://tv.yahoo.co.jp/search/?g=07")))
+                .process(Utility.getDocumentProcessor(simple("http://tv.yahoo.co.jp/search/?g=07")))
                 .process(new AnimeProgramTokyoOnairProcessor())
                 .split(body(LinkedHashSet.class))
                 .setHeader("onair_flag").constant(true)

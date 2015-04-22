@@ -22,7 +22,7 @@ public class AmiamiRoute extends RouteBuilder {
     @Override
     public void configure() throws Exception {
         from("timer:amiami.crawl?period=2h").autoStartup(false).routeId("amiami.crawl")
-                .process(Utility.GetDocumentProcessor(simple("http://www.amiami.jp/top/page/cal/goods.html")))
+                .process(Utility.getDocumentProcessor(simple("http://www.amiami.jp/top/page/cal/goods.html")))
                 .process(jsonResource.load("amiamiTitleToWikiTitle", Map.class))
                 .process(jsonResource.load("amiamiItemMap", Map.class))
                 .process(new AmiamiGetLatestItemsProcessor())
