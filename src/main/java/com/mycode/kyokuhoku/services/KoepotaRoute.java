@@ -49,7 +49,6 @@ public class KoepotaRoute extends RouteBuilder {
                 .process(Utility.mapListToListByOneField("id"))
                 .setHeader("undone", body(List.class))
                 .to("sql:select id from events where done is null?dataSource=ds")
-                .filter(simple("${body.size != 0}"))
                 .process(Utility.mapListToListByOneField("id"))
                 .process(new KoepotaDoneUpdateEventsCreateSQLProcessor())
                 .to("jdbc:ds");

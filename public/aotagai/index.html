@@ -34,7 +34,7 @@
                     <tbody>
                         <tr ng-repeat="obj in aotagai">
                             <td>{{obj.no}}</td>
-                            <td style="width:100px;"><a ng-href="http://ja.wikipedia.org/wiki/{{obj.name}}" target="_blank">{{obj.name}}</a><p style="margin-top: 3px;"><a ng-if="obj.seiyu_twitter" ng-href="{{obj.seiyu_twitter}}" target="_blank" style="text-decoration: none"><img src="icon_twitter.png" alt="twitterを開く" /> </a><a ng-if="obj.seiyu_ameblo" ng-href="{{obj.seiyu_ameblo}}" target="_blank"><img src="icon_ameblo.png" alt="amebloを開く" /></a></p></td>
+                            <td style="width:100px;"><a ng-href="http://ja.wikipedia.org/wiki/{{obj.name}}" target="_blank">{{obj.name}}</a><p style="margin-top: 3px;"><a ng-if="obj.seiyu_twitter" ng-href="{{obj.seiyu_twitter}}" target="_blank" style="text-decoration: none"><img src="icon_twitter.png" title="twitterを開く" /> </a><a ng-if="obj.seiyu_ameblo" ng-href="{{obj.seiyu_ameblo}}" target="_blank"><img src="icon_ameblo.png" title="amebloを開く" /> </a><a ng-if="obj.zukan" ng-href="{{obj.zukan}}" target="_blank"><img src="icon_davinci.png" title="新人声優図鑑" /></a></p></td>
                             <td>{{obj.to_links_exists_count}}</td>
                             <td>{{obj.to_links_count}}</td>
                             <td>{{obj.exintro}}</td>
