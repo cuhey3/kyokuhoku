@@ -1,9 +1,11 @@
 package com.mycode.kyokuhoku.services;
 
 import com.mycode.kyokuhoku.JsonResource;
+import com.mycode.kyokuhoku.TwitterUtil;
 import com.mycode.kyokuhoku.Utility;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,8 +19,14 @@ import org.apache.camel.builder.RouteBuilder;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import twitter4j.PagableResponseList;
+import twitter4j.Twitter;
+import twitter4j.User;
+import twitter4j.UserList;
 
 public class SeiyuRoute extends RouteBuilder {
+
+    final JsonResource jsonResource = JsonResource.getInstance();
 
     @Override
     public void configure() throws Exception {
@@ -41,87 +49,52 @@ public class SeiyuRoute extends RouteBuilder {
                 .setBody(simple("${header.name}"))
                 .to("direct:seiyu.getInfo");
 
-        from("direct:seiyu.new")
-                .process(new SeiyuNewProcessor())
+        from("direct:seiyu.newcomer")
+                .process(new SeiyuGetNewcomerProcessor())
                 .split(body(List.class))
                 .to("direct:seiyu.getInfo");
 
         from("timer:seiyu.categorymembers?period=1h").autoStartup(false).routeId("seiyu.categorymembers")
-                .process(new SeiyuCategoryMembersProcessor())
-                .filter(header("seiyuNameUpdate"))
-                .to("direct:seiyu.new")
-                .to("direct:koepota.existUpdateSeiyu"); // external:koepota
-/*        from("seda:seiyu.twitter")
-         .to("sql:select * from twitter_oauth?dataSource=ds")
-         .setBody(simple("${body[0]}")).to("direct:utility.mapBodyToHeader")
-         .to("sql:select twitter_url from seiyu where twitter_url is not null and seiyu_ignore is null and koepota_exist_now?dataSource=ds")
-         .process(new Processor() {
+                .filter(new SeiyuCategoryMembersHasNewcomerPredicate())
+                .to("direct:seiyu.newcomer")
+                .to("direct:koepota.updateAction"); // external:koepota
 
-         @Override
-         public void process(Exchange exchange) throws Exception {
-         Map<String, Object> headers = exchange.getIn().getHeaders();
-         ConfigurationBuilder cb = new ConfigurationBuilder();
-         cb.setDebugEnabled(true)
-         .setOAuthConsumerKey((String) headers.get("consumer_key"))
-         .setOAuthConsumerSecret((String) headers.get("consumer_secret"))
-         .setOAuthAccessToken((String) headers.get("access_token"))
-         .setOAuthAccessTokenSecret((String) headers.get("access_token_secret"));
-         TwitterFactory tf = new TwitterFactory(cb.build());
-         Twitter twitter = tf.getInstance();
-         UserList userList = twitter.getUserLists("Cu_hey").get(0);
-         long listId = userList.getId();
-         List<Map<String, String>> body = exchange.getIn().getBody(List.class);
-         ArrayList<String> users = new ArrayList<>();
-         for (Map<String, String> map : body) {
-         users.add(map.get("twitter_url").replaceFirst("(https?://)?twitter.com/", "").replaceFirst("/$", ""));
-         }
-         PagableResponseList<User> userListMembers = twitter.getUserListMembers(listId, -1L);
-         Iterator<User> iterator = userListMembers.iterator();
-         while (iterator.hasNext()) {
-         User user = iterator.next();
-         String screenName = user.getScreenName();
-         if (users.contains(screenName)) {
-         users.remove(screenName);
-         } else {
-         twitter.destroyUserListMember(listId, screenName);
-         }
-         }
-         ArrayList<String> sub = new ArrayList<>();
-         for (int i = 0; i < users.size(); i++) {
-         sub.add(users.get(i));
-         if (sub.size() == 50) {
-         twitter.createUserListMembers(listId, sub.toArray(new String[50]));
-         sub = new ArrayList<>();
-         }
-         }
-         if (!sub.isEmpty()) {
-         twitter.createUserListMembers(listId, sub.toArray(new String[sub.size()]));
-         }
-         System.out.println(users.size() + " updated.");
-         }
-         });*/
+        from("seda:seiyu.twitter")
+                .to("sql:select * from twitter_oauth?dataSource=ds")
+                .setBody(simple("${body[0]}")).to("direct:utility.mapBodyToHeader")
+                .to("sql:select twitter_url from seiyu where twitter_url is not null and seiyu_ignore is null and koepota_exist_now?dataSource=ds")
+                .process(Utility.mapListToListByOneField("twitter_url"))
+                .process(new SeiyuUpdateTwitterListProcessor())
+                .filter(jsonResource.saveWithCheck("seiyuTwitterList", simple("${body}")))
+                .to("log:seiyu.twitter.update?showBody=false");
     }
 }
 
-class SeiyuCategoryMembersProcessor implements Processor {
+class SeiyuCategoryMembersHasNewcomerPredicate implements Predicate {
 
     @Override
-    public void process(Exchange exchange) throws Exception {
-        String url = "http://ja.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:%E6%97%A5%E6%9C%AC%E3%81%AE%E5%A5%B3%E6%80%A7%E5%A3%B0%E5%84%AA&cmlimit=500&format=xml&cmnamespace=0&rawcontinue";
-        Document doc = Utility.getDocument(url);
-        LinkedHashMap<String, String> seiyuName = new LinkedHashMap<>();
-        while (true && doc != null) {
-            for (Element e : doc.select("categorymembers cm[title]")) {
-                seiyuName.put(e.attr("title"), e.attr("pageid"));
+    public boolean matches(Exchange exchange) {
+        try {
+            String url = "http://ja.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:%E6%97%A5%E6%9C%AC%E3%81%AE%E5%A5%B3%E6%80%A7%E5%A3%B0%E5%84%AA&cmlimit=500&format=xml&cmnamespace=0&rawcontinue";
+            Document doc = Utility.getDocument(url);
+            LinkedHashMap<String, String> seiyuName = new LinkedHashMap<>();
+            while (true && doc != null) {
+                for (Element e : doc.select("categorymembers cm[title]")) {
+                    seiyuName.put(e.attr("title"), e.attr("pageid"));
+                }
+                if (doc.select("categorymembers[cmcontinue]").isEmpty()) {
+                    break;
+                } else {
+                    String cmcontinue = doc.select("categorymembers[cmcontinue]").get(0).attr("cmcontinue");
+                    doc = Utility.getDocument(url + "&cmcontinue=" + cmcontinue);
+                }
             }
-            if (doc.select("categorymembers[cmcontinue]").isEmpty()) {
-                break;
-            } else {
-                String cmcontinue = doc.select("categorymembers[cmcontinue]").get(0).attr("cmcontinue");
-                doc = Utility.getDocument(url + "&cmcontinue=" + cmcontinue);
-            }
+            return JsonResource.getInstance().save("seiyuName", seiyuName, exchange);
+        } catch (IOException ex) {
+            System.out.println("SeiyuCategoryMembersHasNewcomerPredicate error: ");
+            ex.printStackTrace();
+            return false;
         }
-        exchange.getIn().setHeader("seiyuNameUpdate", JsonResource.getInstance().save("seiyuName", seiyuName, exchange));
     }
 }
 
@@ -188,7 +161,7 @@ class SeiyuGetInfoPredicate implements Predicate {
     }
 }
 
-class SeiyuNewProcessor implements Processor {
+class SeiyuGetNewcomerProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
@@ -204,5 +177,50 @@ class SeiyuNewProcessor implements Processor {
             }
         }
         exchange.getIn().setBody(new ArrayList<>(set));
+    }
+}
+
+class SeiyuUpdateTwitterListProcessor implements Processor {
+
+    @Override
+    public void process(Exchange exchange) throws Exception {
+        Twitter twitter = TwitterUtil.getTwitterInstance(exchange.getIn().getHeaders());
+        UserList userList = twitter.getUserLists("Cu_hey").get(0);
+        long listId = userList.getId();
+        List<String> body = exchange.getIn().getBody(List.class);
+        ArrayList<String> users = new ArrayList<>();
+        for (String url : body) {
+            users.add(url.replaceFirst("(https?://)?twitter.com/", "").replaceFirst("/$", ""));
+        }
+        PagableResponseList<User> userListMembers = twitter.getUserListMembers(listId, -1L);
+        Iterator<User> iterator = userListMembers.iterator();
+        while (iterator.hasNext()) {
+            User user = iterator.next();
+            String screenName = user.getScreenName();
+            if (users.contains(screenName)) {
+                users.remove(screenName);
+            } else {
+                twitter.destroyUserListMember(listId, screenName);
+            }
+        }
+        ArrayList<String> sub = new ArrayList<>();
+        for (String user : users) {
+            sub.add(user);
+            if (sub.size() == 50) {
+                twitter.createUserListMembers(listId, sub.toArray(new String[50]));
+                sub = new ArrayList<>();
+            }
+        }
+        if (!sub.isEmpty()) {
+            twitter.createUserListMembers(listId, sub.toArray(new String[sub.size()]));
+        }
+        userListMembers = twitter.getUserListMembers(listId, -1L);
+        userListMembers.iterator();
+        LinkedHashMap<String, String> result = new LinkedHashMap<>();
+        while (iterator.hasNext()) {
+            User user = iterator.next();
+            result.put(user.getName(), user.getScreenName());
+        }
+        exchange.getIn().setBody(result);
     }
 }

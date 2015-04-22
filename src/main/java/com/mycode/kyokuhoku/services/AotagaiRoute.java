@@ -15,11 +15,13 @@ public class AotagaiRoute extends RouteBuilder {
         from("direct:aotagai.query")
                 .to("sql:select * from aotagai100?dataSource=ds")
                 .process(Utility.listToMapByUniqueKey("name"));
+        
         from("seda:aotagai.writefile")
                 .to("direct:utility.marshal.json")
                 .setBody(simple("var aotagai = ${body};"))
                 .setHeader(Exchange.FILE_NAME, simple("aotagai.js"))
-                .toF("file:%s/aotagai", Settings.PUBLIC_RESOURCE_PATH);
+                .toF("file:%s/aotagai", Settings.PUBLIC_RESOURCE_PATH)
+                .to("log:aotagai.writefile.end?showBody=false");
         
         from("timer:aotagai.startup?repeatCount=1").autoStartup(false).routeId("aotagai.startup")
                 .to("direct:aotagai.query")

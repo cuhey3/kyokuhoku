@@ -143,4 +143,19 @@ public class Utility {
             }
         };
     }
+
+    /*public static Processor StringListToMap() {
+     return new Processor() {
+
+     @Override
+     public void process(Exchange exchange) throws Exception {
+     List<String> list = exchange.getIn().getBody(List.class);
+     LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+     for (String key : list) {
+     result.put(key, key);
+     }
+     exchange.getIn().setBody(result);
+     }
+     };
+     }*/
 }

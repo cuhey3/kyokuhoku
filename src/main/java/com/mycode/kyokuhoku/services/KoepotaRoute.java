@@ -23,39 +23,40 @@ public class KoepotaRoute extends RouteBuilder {
         String insert = "INSERT INTO events (id, day, title, link, hall1, hall2, member) SELECT :#${body[id]}, :#${body[day]}, :#${body[title]}, :#${body[link]}, :#${body[hall1]}, :#${body[hall2]}, :#${body[member]}";
         String update = "UPDATE events SET day=:#${body[day]},title=:#${body[title]} ,link=:#${body[link]},hall1=:#${body[hall1]},hall2=:#${body[hall2]},member=:#${body[member]} WHERE id=:#${body[id]}";
 
-        from("direct:koepota.existUpdateSeiyu")
-                .process(new KoepotaExistUpdateSeiyuProcessor()).to("jdbc:ds")
-                .to("seda:aotagai.update")
-                .to("seda:seiyu.twitter");
-
         from("direct:koepota.getDocument")
                 .process(Utility.getDocumentProcessor(simple("http://www.koepota.jp/eventschedule/")));
 
         from("direct:koepota.upsertEvents")
                 .filter(header("koepotaEventsUpdate"))
-                .to("seda:koepota.done")
+                .wireTap("seda:koepota.updateDone")
                 .split(body(List.class))
                 .toF("sql:WITH upsert AS (%s RETURNING *) %s WHERE NOT EXISTS (SELECT * FROM upsert)?dataSource=ds", update, insert);
 
         from("timer:koepota.crawl?period=1h").autoStartup(false).routeId("koepota.crawl")
+                .to("direct:koepota.updateAction");
+
+        from("direct:koepota.updateAction")
                 .to("direct:koepota.getDocument")
-                .process(new KoepotaParseProcessor())
+                .process(new KoepotaParseEventProcessor())
                 .to("direct:koepota.upsertEvents")
                 .filter(header("koepotaMembersUpdate"))
-                .to("direct:koepota.existUpdateSeiyu");
+                .process(new KoepotaExistUpdateSeiyuCreateSQLProcessor())
+                .to("jdbc:ds")
+                .to("seda:aotagai.update")
+                .to("seda:seiyu.twitter");
 
-        from("seda:koepota.done")
-                .to("sql:select id from events where done is null?dataSource=ds")
+        from("seda:koepota.updateDone")
                 .process(Utility.mapListToListByOneField("id"))
                 .setHeader("undone", body(List.class))
-                .to("direct:koepota.getDocument")
-                .process(new KoepotaDoneEventProcessor())
-                .split(body(List.class))
-                .to("sql: update events set done=true where id=:#${body}?dataSource=ds");
+                .to("sql:select id from events where done is null?dataSource=ds")
+                .filter(simple("${body.size != 0}"))
+                .process(Utility.mapListToListByOneField("id"))
+                .process(new KoepotaDoneUpdateEventsCreateSQLProcessor())
+                .to("jdbc:ds");
     }
 }
 
-class KoepotaParseProcessor implements Processor {
+class KoepotaParseEventProcessor implements Processor {
 
     private final Pattern memberParenthesesPattern = Pattern.compile("[\\(（]([^\\(\\)（）]+)[\\)）]");
     private final Pattern linkToIdPattern = Pattern.compile("^http://www\\.koepota\\.jp/eventschedule/(.+?)\\.html$");
@@ -116,7 +117,7 @@ class KoepotaParseProcessor implements Processor {
     }
 }
 
-class KoepotaExistUpdateSeiyuProcessor implements Processor {
+class KoepotaExistUpdateSeiyuCreateSQLProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
@@ -138,22 +139,20 @@ class KoepotaExistUpdateSeiyuProcessor implements Processor {
     }
 }
 
-class KoepotaDoneEventProcessor implements Processor {
-
-    final Pattern linkToIdPattern = Pattern.compile("^http://www\\.koepota\\.jp/eventschedule/(.+?)\\.html$");
+class KoepotaDoneUpdateEventsCreateSQLProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        List undone = exchange.getIn().getHeader("undone", List.class);
-        Document doc = exchange.getIn().getBody(Document.class);
-        Elements select = doc.select("#eventschedule tr");
-        select.remove(0);
-        for (Element e : select) {
-            Element link_el = e.select("td.title a[href]").first();
-            String link = link_el.attr("href");
-            String id = linkToIdPattern.matcher(link).replaceFirst("$1");
-            undone.remove(id);
+        List<String> webUndone = exchange.getIn().getHeader("undone", List.class);
+        List<String> databaseUndone = exchange.getIn().getBody(List.class);
+
+        StringBuilder sb = new StringBuilder("'test'");
+        for (String id : databaseUndone) {
+            if (!id.contains("'") && !webUndone.contains(id)) {
+                sb.append(",'").append(id).append("'");
+            }
         }
-        exchange.getIn().setBody(undone);
+        String query = "update events set done=true when id in (%s) ";
+        exchange.getIn().setBody(String.format(query, new String(sb)));
     }
 }
