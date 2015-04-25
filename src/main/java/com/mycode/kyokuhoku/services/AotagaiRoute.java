@@ -27,7 +27,7 @@ public class AotagaiRoute extends RouteBuilder {
                 .to("direct:aotagai.query")
                 .to("seda:aotagai.writefile");
         
-        from("timer:foo?perid=30m").to("seda:aotagai.update");
+        from("timer:foo?period=30m").to("seda:aotagai.update");
         from("seda:aotagai.update")
                 .to("direct:aotagai.query")
                 .filter(jsonResource.saveWithCheck("aotagai100", simple("${body}")))
