@@ -3,9 +3,11 @@ package com.mycode.kyokuhoku;
 import com.github.fge.jsonpatch.diff.JsonDiff;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.impl.DefaultExchange;
@@ -38,6 +40,7 @@ public class JsonColumnUtil {
     }
 
     public void save(Object o, Exchange exchange) throws IOException {
+        final Pattern ngWord = Pattern.compile("^(日本|女性|男性|声優|ABO式血液型|Twitter|センチメートル|俳優|舞台|女優|歌手|シンガーソングライター)$");
         String jsonString = MyJsonUtil.getJsonString(o);
         String diffString = null;
         if (oldJson != null) {
@@ -51,10 +54,20 @@ public class JsonColumnUtil {
             e.getIn().setHeader("update", System.currentTimeMillis());
             if (diffString != null) {
                 List readValue = MyJsonUtil.mapper().readValue(diffString, List.class);
-                Map map = new LinkedHashMap<>();
-                map.put("time", System.currentTimeMillis());
-                map.put("diff", readValue);
-                pushDiff(map);
+                Iterator iterator = readValue.iterator();
+                while (iterator.hasNext()) {
+                    Map next = (Map) iterator.next();
+                    if (ngWord.matcher("/" + next.get("path")).find()) {
+                        iterator.remove();
+                    }
+                }
+                if (!readValue.isEmpty()) {
+                    Map map = new LinkedHashMap<>();
+                    map.put("time", System.currentTimeMillis());
+                    map.put("diff", readValue);
+                    pushDiff(map);
+
+                }
                 e.getIn().setHeader("diff", getDiffString());
             }
             pt.send(kind.endpoint, e);

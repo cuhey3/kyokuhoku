@@ -246,6 +246,7 @@ class SeiyuToLinksProcessor implements Processor {
     private final Pattern p2 = Pattern.compile("<ref.*?(/>|>.*?</ref>)", Pattern.DOTALL);
 
     private final Pattern date = Pattern.compile("^(([1-9]|1[0-2])月([1-9]|[12][0-9]|3[01])日|(\\d{1,2})?(\\d{2})年)$");
+    private final Pattern ngWord = Pattern.compile("^(日本|女性|男性|声優|ABO式血液型|Twitter|センチメートル|俳優|舞台|女優|歌手|シンガーソングライター)$");
 
     @Override
     public void process(Exchange exchange) throws Exception {
@@ -270,7 +271,7 @@ class SeiyuToLinksProcessor implements Processor {
                     continue;
                 }
                 if (wikitext.contains(title) || wikitext.contains(title.replace(" ", "_"))) {
-                    if (!date.matcher(title).find() && link.containsKey("exists")) {
+                    if (!date.matcher(title).find() && !ngWord.matcher(title).find() && link.containsKey("exists")) {
                         result.put(title, true);
                     } else {
                         result.put(title, false);
