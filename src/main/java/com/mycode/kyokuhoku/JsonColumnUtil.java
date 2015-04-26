@@ -57,7 +57,7 @@ public class JsonColumnUtil {
                 Iterator iterator = readValue.iterator();
                 while (iterator.hasNext()) {
                     Map next = (Map) iterator.next();
-                    if (ngWord.matcher("/" + next.get("path")).find()) {
+                    if (ngWord.matcher(((String) next.get("path")).replaceFirst("^/", "")).find()) {
                         iterator.remove();
                     }
                 }
