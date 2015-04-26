@@ -44,7 +44,7 @@ public class SeiyuWikiParseRoute extends RouteBuilder {
         from("timer:foofoo?period=1m")
                 .to("sql:select * from seiyu where koepota_exist and seiyu_ignore is null order by (to_links_last_crawl is not null),to_links_last_crawl limit 1?dataSource=ds&delay=1m").autoStartup(false)
                 .process(new SeiyuToLinksProcessor())
-                .to("sql:update seiyu set to_links_last_crawl =:#${header.now}, to_links_count =:#${header.to_links_count}, to_links_exists_count =:#${header.to_links_exists_count}, name_kana = :#${header.name_kana} where name=:#${header.name}?dataSource=ds");
+                .to("sql:update seiyu set to_links_last_crawl =:#${header.now}, to_links_count =:#${header.to_links_count}, to_links_exists_count =:#${header.to_links_exists_count} where name=:#${header.name}?dataSource=ds");
     }
 }
 
@@ -247,7 +247,6 @@ class SeiyuToLinksProcessor implements Processor {
 
     private final Pattern date = Pattern.compile("^(([1-9]|1[0-2])月([1-9]|[12][0-9]|3[01])日|(\\d{1,2})?(\\d{2})年)$");
     private final Pattern ngWord = Pattern.compile("^(日本|女性|男性|声優|ABO式血液型|Twitter|センチメートル|俳優|舞台|女優|歌手|シンガーソングライター)$");
-    private final Pattern kana = Pattern.compile("\\{\\{DEFAULTSORT:(.*?)\\}\\}", Pattern.CASE_INSENSITIVE);
 
     @Override
     public void process(Exchange exchange) throws Exception {
@@ -260,11 +259,6 @@ class SeiyuToLinksProcessor implements Processor {
         Map jsonCursor = json.get("parse");
         jsonCursor = (Map) jsonCursor.get("wikitext");
         String wikitext = (String) jsonCursor.get("*");
-        String name_kana = null;
-        Matcher m = kana.matcher(wikitext);
-        if(m.find()){
-            name_kana = m.group(1);
-        }
         wikitext = p1.matcher(wikitext).replaceAll("");
         wikitext = p2.matcher(wikitext).replaceAll("");
         jsonCursor = (Map) json.get("parse");
@@ -299,7 +293,6 @@ class SeiyuToLinksProcessor implements Processor {
         exchange.getIn().setHeader("now", System.currentTimeMillis());
         exchange.getIn().setHeader("to_links_count", to_links_count);
         exchange.getIn().setHeader("to_links_exists_count", to_links_exists_count);
-        exchange.getIn().setHeader("name_kana", name_kana);
     }
 }
 
